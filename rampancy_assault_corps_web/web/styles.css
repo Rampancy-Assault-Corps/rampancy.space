@@ -1,0 +1,119 @@
+/* ============================================
+   ARCANE JASPR APP - THEME SYSTEM
+   ============================================ */
+
+/* Reset */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ============================================
+   ROOT CSS VARIABLES
+   ============================================ */
+:root {
+  /* Typography */
+  --font-sans: "GeistSans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Fira Code", "JetBrains Mono", "SF Mono", Consolas, monospace;
+}
+
+/* ============================================
+   BASE STYLES
+   ============================================ */
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  scroll-behavior: smooth;
+  background-color: var(--arcane-background);
+  color: var(--arcane-on-background);
+}
+
+body {
+  min-height: 100vh;
+  background-color: var(--arcane-background);
+  color: var(--arcane-on-background);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================
+   SELECTION
+   ============================================ */
+::selection {
+  background-color: rgba(var(--arcane-accent-rgb), 0.2);
+}
+
+/* ============================================
+   FOCUS STATES
+   ============================================ */
+button:focus-visible {
+  outline: 2px solid var(--arcane-accent);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   THEME TOGGLE
+   ============================================ */
+#theme-toggle:hover {
+  background: var(--arcane-surface-variant);
+  transform: scale(1.05);
+}
+
+#theme-toggle:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   LINKS
+   ============================================ */
+a {
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   SCROLLBAR
+   ============================================ */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--arcane-surface, #171717);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--arcane-border, #2e2e2e);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--arcane-muted, #8f8f8f);
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+  body {
+    font-size: 15px;
+  }
+}
+
+/* ============================================
+   LOADING (backup styles)
+   ============================================ */
+#loading {
+  display: none;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

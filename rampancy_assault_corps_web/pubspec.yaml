@@ -1,0 +1,51 @@
+name: rampancy_assault_corps_web
+description: "RampancyAssaultCorps web application"
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  web: ^1.1.1
+  jaspr: ^0.22.3
+  arcane_jaspr: ^3.0.0
+  fast_log: ^1.0.7
+  http: ^1.6.0
+
+  # Shared models (added automatically when models enabled)
+  # rampancy_assault_corps_models:
+  #   path: ../rampancy_assault_corps_models
+
+  # Firebase Auth (added automatically when Firebase enabled)
+  # arcane_auth_jaspr: ^0.5.0
+
+dev_dependencies:
+  build_runner: ^2.11.1
+  build_web_compilers: ^4.4.14
+  jaspr_builder: ^0.22.3
+  lints: ^6.1.0
+
+jaspr:
+  mode: client
+
+scripts:
+  # Development
+  serve: jaspr serve
+  serve_release: jaspr serve --release
+
+  # Build
+  build: jaspr build
+
+  # Clean
+  clean: jaspr clean
+
+  # Kill running servers
+  killall: pkill -f "jaspr serve" || true
+
+  # Code Generation
+  build_runner: dart run build_runner build --delete-conflicting-outputs
+  watch: dart run build_runner watch --delete-conflicting-outputs
+
+  # Firebase Deployment (run from parent directory)
+  firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project rampancy-space

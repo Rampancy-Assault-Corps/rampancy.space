@@ -1,0 +1,44 @@
+# Development Dockerfile for rampancy_assault_corps_server
+# Includes Flutter SDK for debugging
+
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    zip \
+    libglu1-mesa \
+    libgtk-3-0 \
+    libblkid1 \
+    liblzma5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Flutter
+RUN git clone https://github.com/flutter/flutter.git /flutter
+ENV PATH="/flutter/bin:$PATH"
+RUN flutter doctor
+RUN flutter config --enable-linux-desktop
+
+# Set up work directory
+WORKDIR /app
+
+# Copy models if it exists
+COPY rampancy_assault_corps_models/ /rampancy_assault_corps_models/
+
+# Copy server source
+COPY rampancy_assault_corps_server/ /app/
+
+# Get dependencies
+RUN flutter pub get
+
+# Copy service account key
+COPY rampancy_assault_corps_server/*.json ./
+
+# Expose port
+EXPOSE 8080
+
+# Run the server in development mode
+CMD ["flutter", "run", "-d", "linux"]

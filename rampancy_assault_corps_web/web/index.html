@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RampancyAssaultCorpsWeb</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="assets/icon.png">
+
+  <!-- Theme initialization - runs before page renders to prevent flash -->
+  <script>
+    (function() {
+      var savedTheme = localStorage.getItem('arcane-theme-preset') || 'green';
+      var savedMode = localStorage.getItem('arcane-theme-mode') || 'dark';
+      document.documentElement.className = 'theme-' + savedTheme + '-' + savedMode;
+    })();
+  </script>
+
+  <!-- Global CSS Reset and Loading Screen -->
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow-x: hidden;
+      background-color: var(--arcane-background, #09090b);
+      color: var(--arcane-on-background, #fafafa);
+    }
+    body {
+      font-family: 'GeistSans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    /* Loading state */
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--arcane-background, #09090b);
+      z-index: 9999;
+      transition: opacity 0.3s ease;
+    }
+    .loading-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .loader {
+      width: 48px;
+      height: 48px;
+      border: 3px solid var(--arcane-border, #27272a);
+      border-top-color: var(--arcane-accent, #10b981);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+
+  <!-- Firebase SDKs (uncomment if using Firebase) -->
+  <!--
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: ": ",
+      authDomain: ": ",
+      projectId: ": ",
+      storageBucket: ": ",
+      messagingSenderId: ": ",
+      appId: ": "
+    };
+    firebase.initializeApp(firebaseConfig);
+  </script>
+  -->
+
+  <!-- Jaspr generated styles -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Loading screen shown while Dart loads -->
+  <div class="loading-screen" id="loading">
+    <div class="loader"></div>
+  </div>
+
+  <!-- App root -->
+  <div id="app"></div>
+
+  <!-- Hide loading screen when app loads -->
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() {
+        document.getElementById('loading').classList.add('hidden');
+      }, 100);
+    });
+  </script>
+
+  <!-- Jaspr compiled Dart -->
+  <script defer src="main.client.dart.js"></script>
+</body>
+</html>

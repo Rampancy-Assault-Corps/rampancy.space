@@ -1,2 +1,13 @@
-
 .idea/
+.firebase/
+*.iml
+.DS_Store
+
+# Local credentials (public repo safety)
+service-account.json
+rampancy_assault_corps_server/service-account.json
+SERVICE_ACCOUNT
+
+rampancy_assault_corps_models/.metadata
+
+rampancy_assault_corps_server/.metadata

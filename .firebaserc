@@ -1,0 +1,18 @@
+{
+  "projects": {
+    "default": "rampancy-space"
+  },
+  "targets": {
+    "rampancy-space": {
+      "hosting": {
+        "release": [
+          "rampancy-space"
+        ],
+        "beta": [
+          "rampancy-space-beta"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

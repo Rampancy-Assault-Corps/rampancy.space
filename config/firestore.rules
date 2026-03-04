@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function getCapabilities() {
+      return get(/databases/$(database)/documents/user/$(request.auth.uid)/data/capabilities).data;
+    }
+
+    function isAdmin() {
+      return isAuth() && getCapabilities().admin == true;
+    }
+
+    function isUser(id) {
+      return isAuth() && request.auth.uid == id;
+    }
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Commands collection (users can write, server can read)
+    match /commands/{command} {
+      allow create: if isAuth() && request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if isAuth() && resource.data.uid == request.auth.uid;
+    }
+
+    // User documents
+    match /user/{userId} {
+      allow read: if isUser(userId) || isAdmin();
+      allow write: if isUser(userId);
+
+      // User settings subcollection
+      match /data/settings {
+        allow read, write: if isUser(userId);
+      }
+
+      // User capabilities subcollection (admin only write)
+      match /data/capabilities {
+        allow read: if isUser(userId);
+        allow write: if isAdmin();
+      }
+    }
+
+    match /account_links/{discordId} {
+      allow read, write: if false;
+
+      match /memberships/{membershipId} {
+        allow read, write: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "firestore": {
+    "rules": "config/firestore.rules",
+    "indexes": "config/firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "config/storage.rules"
+  },
+  "hosting": [
+    {
+      "target": "release",
+      "public": "rampancy_assault_corps_web/build/jaspr",
+      "predeploy": [
+        "cd rampancy_assault_corps_web && jaspr build"
+      ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "beta",
+      "public": "rampancy_assault_corps_web/build/jaspr",
+      "predeploy": [
+        "cd rampancy_assault_corps_web && jaspr build"
+      ],
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
+}
