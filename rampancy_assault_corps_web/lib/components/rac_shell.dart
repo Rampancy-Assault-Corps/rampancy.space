@@ -36,14 +36,6 @@ class RacShell extends StatelessComponent {
           classes: 'rac-header__github-icon-image',
         ),
       ], classes: 'rac-header__github-icon'),
-      div([
-        div([
-          Component.text('OPEN SOURCE'),
-        ], classes: 'rac-header__github-label'),
-        div([
-          Component.text('PUBLIC REPOSITORY'),
-        ], classes: 'rac-header__github-value'),
-      ], classes: 'rac-header__github-copy'),
     ];
 
     Component githubBadge = div(githubChildren, classes: 'rac-header__github');
