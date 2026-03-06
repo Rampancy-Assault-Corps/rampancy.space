@@ -7,6 +7,8 @@
 service-account.json
 rampancy_assault_corps_server/service-account.json
 SERVICE_ACCOUNT
+config/local.env
+config/deploy.env
 
 rampancy_assault_corps_models/.metadata
 

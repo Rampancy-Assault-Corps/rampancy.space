@@ -51,10 +51,14 @@ flutter:
   uses-material-design: true
 
 scripts:
-  # Oracular Commands
-  deploy: oracular deploy server
-  deploy_all: oracular deploy all
+  # Deploy aliases
+  deploy: sh ../scripts/deploy_server.sh
+  deploy_all: sh ../scripts/deploy_all.sh
   check_tools: oracular check server
 
-  # Manual Deployment
+  # Explicit deploy commands
+  deploy_server: sh ../scripts/deploy_server.sh
+  deploy_site: sh ../scripts/deploy_site.sh
+  deploy_firebase_config: sh ../scripts/deploy_firebase_config.sh
+  deploy_both: sh ../scripts/deploy_all.sh
   deploy_manual: sh ./script_deploy.sh

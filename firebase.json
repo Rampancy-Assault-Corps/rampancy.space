@@ -6,42 +6,40 @@
   "storage": {
     "rules": "config/storage.rules"
   },
-  "hosting": [
-    {
-      "target": "release",
-      "public": "rampancy_assault_corps_web/build/jaspr",
-      "predeploy": [
-        "cd rampancy_assault_corps_web && jaspr build"
-      ],
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
+  "hosting": {
+    "target": "release",
+    "public": "rampancy_assault_corps_web/build/jaspr",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/auth/**",
+        "run": {
+          "serviceId": "rampancy-assault-corps-server",
+          "region": "us-central1"
         }
-      ]
-    },
-    {
-      "target": "beta",
-      "public": "rampancy_assault_corps_web/build/jaspr",
-      "predeploy": [
-        "cd rampancy_assault_corps_web && jaspr build"
-      ],
-      "ignore": [
-        "firebase.json",
-        "**/.*",
-        "**/node_modules/**"
-      ],
-      "rewrites": [
-        {
-          "source": "**",
-          "destination": "/index.html"
+      },
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "rampancy-assault-corps-server",
+          "region": "us-central1"
         }
-      ]
-    }
-  ]
+      },
+      {
+        "source": "/keepAlive",
+        "run": {
+          "serviceId": "rampancy-assault-corps-server",
+          "region": "us-central1"
+        }
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
 }

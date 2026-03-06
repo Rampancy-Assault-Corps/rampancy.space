@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:fast_log/fast_log.dart';
 import 'package:http/http.dart' as http;
 import 'package:rampancy_assault_corps_server/config/account_linking_config.dart';
 
@@ -55,7 +56,7 @@ class OAuthProviderService {
     : _http = client ?? http.Client();
 
   Uri buildDiscordAuthorizeUri({required String state}) {
-    return Uri.https('discord.com', '/oauth2/authorize', <String, String>{
+    Uri uri = Uri.https('discord.com', '/oauth2/authorize', <String, String>{
       'response_type': 'code',
       'client_id': _config.discordClientId,
       'scope': 'identify',
@@ -63,25 +64,37 @@ class OAuthProviderService {
       'state': state,
       'prompt': 'consent',
     });
+    network(
+      'oauth_discord_authorize_build redirectUri=${_config.discordRedirectUri} stateLength=${state.length}',
+    );
+    return uri;
   }
 
   Uri buildBungieAuthorizeUri({required String state}) {
-    return Uri.https('www.bungie.net', '/en/OAuth/Authorize', <String, String>{
-      'client_id': _config.bungieClientId,
-      'response_type': 'code',
-      'state': state,
-    });
+    Uri uri =
+        Uri.https('www.bungie.net', '/en/oauth/authorize', <String, String>{
+          'client_id': _config.bungieClientId,
+          'response_type': 'code',
+          'redirect_uri': _config.bungieRedirectUri,
+          'state': state,
+        });
+    network(
+      'oauth_bungie_authorize_build redirectUri=${_config.bungieRedirectUri} stateLength=${state.length}',
+    );
+    return uri;
   }
 
   Future<DiscordProfile> exchangeDiscordCodeForProfile({
     required String code,
   }) async {
-    final Uri tokenUri = Uri.https('discord.com', '/api/oauth2/token');
+    Uri tokenUri = Uri.https('discord.com', '/api/oauth2/token');
+    network('oauth_discord_exchange_begin codeLength=${code.length}');
 
-    final http.Response tokenResponse = await _http.post(
+    http.Response tokenResponse = await _http.post(
       tokenUri,
       headers: <String, String>{
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
       },
       body: <String, String>{
         'client_id': _config.discordClientId,
@@ -91,46 +104,55 @@ class OAuthProviderService {
         'redirect_uri': _config.discordRedirectUri,
       },
     );
+    network(
+      'oauth_discord_exchange_token_response status=${tokenResponse.statusCode}',
+    );
 
     if (tokenResponse.statusCode < 200 || tokenResponse.statusCode >= 300) {
+      String providerError = _extractProviderError(tokenResponse.body);
       throw StateError(
-        'Discord token exchange failed: ${tokenResponse.statusCode}',
+        'Discord token exchange failed: ${tokenResponse.statusCode} $providerError',
       );
     }
 
-    final Map<String, dynamic> tokenMap = _decodeMap(
+    Map<String, dynamic> tokenMap = _decodeMap(
       tokenResponse.body,
       'Discord token response',
     );
-    final String accessToken = (tokenMap['access_token'] as String?) ?? '';
+    String accessToken = (tokenMap['access_token'] as String?) ?? '';
 
     if (accessToken.isEmpty) {
       throw StateError('Discord token exchange returned no access token.');
     }
 
-    final Uri profileUri = Uri.https('discord.com', '/api/users/@me');
-    final http.Response profileResponse = await _http.get(
+    Uri profileUri = Uri.https('discord.com', '/api/users/@me');
+    http.Response profileResponse = await _http.get(
       profileUri,
       headers: <String, String>{'Authorization': 'Bearer $accessToken'},
     );
+    network(
+      'oauth_discord_profile_response status=${profileResponse.statusCode}',
+    );
 
     if (profileResponse.statusCode < 200 || profileResponse.statusCode >= 300) {
+      String providerError = _extractProviderError(profileResponse.body);
       throw StateError(
-        'Discord profile request failed: ${profileResponse.statusCode}',
+        'Discord profile request failed: ${profileResponse.statusCode} $providerError',
       );
     }
 
-    final Map<String, dynamic> profileMap = _decodeMap(
+    Map<String, dynamic> profileMap = _decodeMap(
       profileResponse.body,
       'Discord profile response',
     );
 
-    final String id = (profileMap['id'] as String?) ?? '';
-    final String username = (profileMap['username'] as String?) ?? '';
+    String id = (profileMap['id'] as String?) ?? '';
+    String username = (profileMap['username'] as String?) ?? '';
 
     if (id.isEmpty || username.isEmpty) {
       throw StateError('Discord profile missing required id/username fields.');
     }
+    info('oauth_discord_profile_resolved discordId=$id username=$username');
 
     return DiscordProfile(
       id: id,
@@ -141,18 +163,18 @@ class OAuthProviderService {
   }
 
   Future<BungieOAuthResult> exchangeBungieCode({required String code}) async {
-    final Uri tokenUri = Uri.parse(
-      'https://www.bungie.net/platform/app/oauth/token/',
-    );
+    Uri tokenUri = Uri.https('www.bungie.net', '/platform/app/oauth/token/');
+    network('oauth_bungie_exchange_begin codeLength=${code.length}');
 
-    final String basicToken = base64Encode(
+    String basicToken = base64Encode(
       utf8.encode('${_config.bungieClientId}:${_config.bungieClientSecret}'),
     );
 
-    final http.Response tokenResponse = await _http.post(
+    http.Response tokenResponse = await _http.post(
       tokenUri,
       headers: <String, String>{
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
         'Authorization': 'Basic $basicToken',
         'X-API-Key': _config.bungieApiKey,
       },
@@ -163,34 +185,41 @@ class OAuthProviderService {
         'redirect_uri': _config.bungieRedirectUri,
       },
     );
+    network(
+      'oauth_bungie_exchange_token_response status=${tokenResponse.statusCode}',
+    );
 
     if (tokenResponse.statusCode < 200 || tokenResponse.statusCode >= 300) {
+      String providerError = _extractProviderError(tokenResponse.body);
       throw StateError(
-        'Bungie token exchange failed: ${tokenResponse.statusCode}',
+        'Bungie token exchange failed: ${tokenResponse.statusCode} $providerError',
       );
     }
 
-    final Map<String, dynamic> tokenMap = _decodeMap(
+    Map<String, dynamic> tokenMap = _decodeMap(
       tokenResponse.body,
       'Bungie token response',
     );
 
-    final String accessToken = (tokenMap['access_token'] as String?) ?? '';
-    final String refreshToken = (tokenMap['refresh_token'] as String?) ?? '';
+    String accessToken = (tokenMap['access_token'] as String?) ?? '';
+    String refreshToken = (tokenMap['refresh_token'] as String?) ?? '';
 
     if (accessToken.isEmpty || refreshToken.isEmpty) {
       throw StateError('Bungie token response missing required tokens.');
     }
 
-    final int? refreshExpiresIn = _asInt(tokenMap['refresh_expires_in']);
+    int? refreshExpiresIn = _asInt(tokenMap['refresh_expires_in']);
     int? refreshExpiresAt;
     if (refreshExpiresIn != null) {
       refreshExpiresAt =
           DateTime.now().millisecondsSinceEpoch + (refreshExpiresIn * 1000);
     }
+    info('oauth_bungie_tokens_resolved refreshExpiry=$refreshExpiresAt');
 
-    final List<BungieMembershipData> memberships =
-        await _fetchBungieMemberships(accessToken);
+    List<BungieMembershipData> memberships = await _fetchBungieMemberships(
+      accessToken,
+    );
+    info('oauth_bungie_memberships_resolved count=${memberships.length}');
 
     return BungieOAuthResult(
       refreshToken: refreshToken,
@@ -202,65 +231,72 @@ class OAuthProviderService {
   Future<List<BungieMembershipData>> _fetchBungieMemberships(
     String accessToken,
   ) async {
-    final Uri membershipsUri = Uri.parse(
-      'https://www.bungie.net/Platform/User/GetMembershipsForCurrentUser/',
+    Uri membershipsUri = Uri.https(
+      'www.bungie.net',
+      '/Platform/User/GetMembershipsForCurrentUser/',
     );
+    network('oauth_bungie_memberships_begin');
 
-    final http.Response membershipsResponse = await _http.get(
+    http.Response membershipsResponse = await _http.get(
       membershipsUri,
       headers: <String, String>{
         'Authorization': 'Bearer $accessToken',
         'X-API-Key': _config.bungieApiKey,
       },
     );
+    network(
+      'oauth_bungie_memberships_response status=${membershipsResponse.statusCode}',
+    );
 
     if (membershipsResponse.statusCode < 200 ||
         membershipsResponse.statusCode >= 300) {
+      String providerError = _extractProviderError(membershipsResponse.body);
       throw StateError(
-        'Bungie memberships request failed: ${membershipsResponse.statusCode}',
+        'Bungie memberships request failed: ${membershipsResponse.statusCode} $providerError',
       );
     }
 
-    final Map<String, dynamic> membershipsMap = _decodeMap(
+    Map<String, dynamic> membershipsMap = _decodeMap(
       membershipsResponse.body,
       'Bungie memberships response',
     );
 
-    final dynamic responseValue = membershipsMap['Response'];
+    dynamic responseValue = membershipsMap['Response'];
     if (responseValue is! Map<String, dynamic>) {
+      warn('oauth_bungie_memberships_missing_response_object');
       return <BungieMembershipData>[];
     }
 
-    final Map<String, dynamic> responseMap = responseValue;
-    final int? primaryMembershipType = _asInt(responseMap['crossSaveOverride']);
-    final String? primaryMembershipId =
-        responseMap['primaryMembershipId'] as String?;
+    Map<String, dynamic> responseMap = responseValue;
+    int? primaryMembershipType = _asInt(responseMap['crossSaveOverride']);
+    String? primaryMembershipId = responseMap['primaryMembershipId'] as String?;
 
-    final dynamic rawMemberships = responseMap['destinyMemberships'];
+    dynamic rawMemberships = responseMap['destinyMemberships'];
     if (rawMemberships is! List<dynamic>) {
+      warn('oauth_bungie_memberships_missing_destiny_memberships');
       return <BungieMembershipData>[];
     }
 
-    final List<BungieMembershipData> memberships = <BungieMembershipData>[];
+    List<BungieMembershipData> memberships = <BungieMembershipData>[];
 
-    for (final dynamic entry in rawMemberships) {
+    for (dynamic entry in rawMemberships) {
       if (entry is! Map<String, dynamic>) {
         continue;
       }
 
-      final String membershipId = (entry['membershipId'] as String?) ?? '';
-      final int membershipType = _asInt(entry['membershipType']) ?? 0;
+      String membershipId = (entry['membershipId'] as String?) ?? '';
+      int membershipType = _asInt(entry['membershipType']) ?? 0;
       if (membershipId.isEmpty || membershipType == 0) {
         continue;
       }
 
-      final int? entryCrossSaveOverride = _asInt(entry['crossSaveOverride']);
-      final bool isPrimaryById =
+      int? entryCrossSaveOverride = _asInt(entry['crossSaveOverride']);
+      bool isPrimaryById =
           primaryMembershipId != null && primaryMembershipId == membershipId;
-      final bool isPrimaryByType =
+      bool isPrimaryByType =
           primaryMembershipType != null &&
           primaryMembershipType == membershipType;
-      final bool isPrimary = isPrimaryById || isPrimaryByType;
+      bool isPrimary = isPrimaryById || isPrimaryByType;
 
       memberships.add(
         BungieMembershipData(
@@ -293,10 +329,43 @@ class OAuthProviderService {
   }
 
   Map<String, dynamic> _decodeMap(String body, String name) {
-    final dynamic decoded = jsonDecode(body);
+    dynamic decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
       throw StateError('$name must be a JSON object.');
     }
     return decoded;
+  }
+
+  String _extractProviderError(String body) {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (_) {
+      String compactBody = body.trim().replaceAll('\n', ' ');
+      if (compactBody.length > 220) {
+        return compactBody.substring(0, 220);
+      }
+      return compactBody;
+    }
+
+    if (decoded is! Map<String, dynamic>) {
+      return decoded.toString();
+    }
+
+    String? errorCode = decoded['error'] as String?;
+    String? message =
+        decoded['error_description'] as String? ??
+        decoded['Message'] as String? ??
+        decoded['message'] as String?;
+    if (errorCode != null && errorCode.isNotEmpty && message != null) {
+      return '$errorCode: $message';
+    }
+    if (errorCode != null && errorCode.isNotEmpty) {
+      return errorCode;
+    }
+    if (message != null && message.isNotEmpty) {
+      return message;
+    }
+    return decoded.toString();
   }
 }

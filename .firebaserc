@@ -7,9 +7,6 @@
       "hosting": {
         "release": [
           "rampancy-space"
-        ],
-        "beta": [
-          "rampancy-space-beta"
         ]
       }
     }

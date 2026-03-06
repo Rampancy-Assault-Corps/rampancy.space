@@ -375,6 +375,27 @@ extension XFCrudBase$AccountLink on AccountLink {
     /// Removes the [bungieConnected] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
     bool deleteBungieConnected = false,
     
+    /// Replaces the value of [bungiePrimaryMembershipKey] with a new value atomically.
+    String? bungiePrimaryMembershipKey,
+    
+    /// Removes the [bungiePrimaryMembershipKey] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipKey = false,
+    
+    /// Replaces the value of [bungiePrimaryMembershipId] with a new value atomically.
+    String? bungiePrimaryMembershipId,
+    
+    /// Removes the [bungiePrimaryMembershipId] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipId = false,
+    
+    /// Changes (increment/decrement) [bungiePrimaryMembershipType] by an amount atomically using FieldValue.increment() see https://cloud.google.com/firestore/docs/manage-data/add-data#increment_a_numeric_value.
+    int? deltaBungiePrimaryMembershipType,
+    
+    /// Replaces the value of [bungiePrimaryMembershipType] with a new value atomically.
+    int? bungiePrimaryMembershipType,
+    
+    /// Removes the [bungiePrimaryMembershipType] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipType = false,
+    
     /// Changes (increment/decrement) [bungieLinkedAt] by an amount atomically using FieldValue.increment() see https://cloud.google.com/firestore/docs/manage-data/add-data#increment_a_numeric_value.
     int? deltaBungieLinkedAt,
     
@@ -429,6 +450,13 @@ extension XFCrudBase$AccountLink on AccountLink {
       if(deleteDiscordLinkedAt) 'discordLinkedAt': FieldValue.delete(),
       if(bungieConnected != null) 'bungieConnected': bungieConnected,
       if(deleteBungieConnected) 'bungieConnected': FieldValue.delete(),
+      if(bungiePrimaryMembershipKey != null) 'bungiePrimaryMembershipKey': bungiePrimaryMembershipKey,
+      if(deleteBungiePrimaryMembershipKey) 'bungiePrimaryMembershipKey': FieldValue.delete(),
+      if(bungiePrimaryMembershipId != null) 'bungiePrimaryMembershipId': bungiePrimaryMembershipId,
+      if(deleteBungiePrimaryMembershipId) 'bungiePrimaryMembershipId': FieldValue.delete(),
+      if(bungiePrimaryMembershipType != null) 'bungiePrimaryMembershipType': bungiePrimaryMembershipType,
+      if(deltaBungiePrimaryMembershipType != null) 'bungiePrimaryMembershipType': FieldValue.increment(deltaBungiePrimaryMembershipType),
+      if(deleteBungiePrimaryMembershipType) 'bungiePrimaryMembershipType': FieldValue.delete(),
       if(bungieLinkedAt != null) 'bungieLinkedAt': bungieLinkedAt,
       if(deltaBungieLinkedAt != null) 'bungieLinkedAt': FieldValue.increment(deltaBungieLinkedAt),
       if(deleteBungieLinkedAt) 'bungieLinkedAt': FieldValue.delete(),
@@ -915,6 +943,27 @@ extension XFCrudRoot$AccountLink on RootFireCrud {
     /// Removes the [bungieConnected] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
     bool deleteBungieConnected = false,
     
+    /// Replaces the value of [bungiePrimaryMembershipKey] with a new value atomically.
+    String? bungiePrimaryMembershipKey,
+    
+    /// Removes the [bungiePrimaryMembershipKey] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipKey = false,
+    
+    /// Replaces the value of [bungiePrimaryMembershipId] with a new value atomically.
+    String? bungiePrimaryMembershipId,
+    
+    /// Removes the [bungiePrimaryMembershipId] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipId = false,
+    
+    /// Changes (increment/decrement) [bungiePrimaryMembershipType] by an amount atomically using FieldValue.increment() see https://cloud.google.com/firestore/docs/manage-data/add-data#increment_a_numeric_value.
+    int? deltaBungiePrimaryMembershipType,
+    
+    /// Replaces the value of [bungiePrimaryMembershipType] with a new value atomically.
+    int? bungiePrimaryMembershipType,
+    
+    /// Removes the [bungiePrimaryMembershipType] field from the document atomically using FieldValue.delete(). See https://cloud.google.com/firestore/docs/manage-data/delete-data#fields
+    bool deleteBungiePrimaryMembershipType = false,
+    
     /// Changes (increment/decrement) [bungieLinkedAt] by an amount atomically using FieldValue.increment() see https://cloud.google.com/firestore/docs/manage-data/add-data#increment_a_numeric_value.
     int? deltaBungieLinkedAt,
     
@@ -969,6 +1018,13 @@ extension XFCrudRoot$AccountLink on RootFireCrud {
       if(deleteDiscordLinkedAt) 'discordLinkedAt': FieldValue.delete(),
       if(bungieConnected != null) 'bungieConnected': bungieConnected,
       if(deleteBungieConnected) 'bungieConnected': FieldValue.delete(),
+      if(bungiePrimaryMembershipKey != null) 'bungiePrimaryMembershipKey': bungiePrimaryMembershipKey,
+      if(deleteBungiePrimaryMembershipKey) 'bungiePrimaryMembershipKey': FieldValue.delete(),
+      if(bungiePrimaryMembershipId != null) 'bungiePrimaryMembershipId': bungiePrimaryMembershipId,
+      if(deleteBungiePrimaryMembershipId) 'bungiePrimaryMembershipId': FieldValue.delete(),
+      if(bungiePrimaryMembershipType != null) 'bungiePrimaryMembershipType': bungiePrimaryMembershipType,
+      if(deltaBungiePrimaryMembershipType != null) 'bungiePrimaryMembershipType': FieldValue.increment(deltaBungiePrimaryMembershipType),
+      if(deleteBungiePrimaryMembershipType) 'bungiePrimaryMembershipType': FieldValue.delete(),
       if(bungieLinkedAt != null) 'bungieLinkedAt': bungieLinkedAt,
       if(deltaBungieLinkedAt != null) 'bungieLinkedAt': FieldValue.increment(deltaBungieLinkedAt),
       if(deleteBungieLinkedAt) 'bungieLinkedAt': FieldValue.delete(),

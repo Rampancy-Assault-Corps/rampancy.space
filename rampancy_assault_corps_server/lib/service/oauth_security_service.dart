@@ -5,14 +5,16 @@ import 'package:cryptography/cryptography.dart';
 import 'package:rampancy_assault_corps_server/config/account_linking_config.dart';
 
 class SessionPayload {
-  final String discordId;
-  final String discordUsername;
+  final String accountLinkId;
+  final String? discordId;
+  final String? discordUsername;
   final String? discordGlobalName;
   final String? discordAvatarHash;
   final int issuedAt;
   final int expiresAt;
 
   const SessionPayload({
+    required this.accountLinkId,
     required this.discordId,
     required this.discordUsername,
     required this.discordGlobalName,
@@ -22,6 +24,7 @@ class SessionPayload {
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
+    'accountLinkId': accountLinkId,
     'discordId': discordId,
     'discordUsername': discordUsername,
     'discordGlobalName': discordGlobalName,
@@ -31,14 +34,45 @@ class SessionPayload {
   };
 
   factory SessionPayload.fromMap(Map<String, dynamic> map) {
+    String? accountLinkId = map['accountLinkId'] as String?;
+    int? issuedAt = _asInt(map['issuedAt']);
+    int? expiresAt = _asInt(map['expiresAt']);
+    if (accountLinkId == null ||
+        accountLinkId.isEmpty ||
+        issuedAt == null ||
+        expiresAt == null) {
+      throw StateError('Invalid session payload.');
+    }
+
     return SessionPayload(
-      discordId: map['discordId'] as String,
-      discordUsername: map['discordUsername'] as String,
-      discordGlobalName: map['discordGlobalName'] as String?,
-      discordAvatarHash: map['discordAvatarHash'] as String?,
-      issuedAt: map['issuedAt'] as int,
-      expiresAt: map['expiresAt'] as int,
+      accountLinkId: accountLinkId,
+      discordId: _asNullableString(map['discordId']),
+      discordUsername: _asNullableString(map['discordUsername']),
+      discordGlobalName: _asNullableString(map['discordGlobalName']),
+      discordAvatarHash: _asNullableString(map['discordAvatarHash']),
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
     );
+  }
+
+  static String? _asNullableString(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return value;
+    }
+    return null;
+  }
+
+  static int? _asInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    if (value is num) {
+      return value.toInt();
+    }
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 }
 
@@ -47,14 +81,14 @@ class OAuthStatePayload {
   final String nonce;
   final int issuedAt;
   final int expiresAt;
-  final String? discordId;
+  final String? accountLinkId;
 
   const OAuthStatePayload({
     required this.provider,
     required this.nonce,
     required this.issuedAt,
     required this.expiresAt,
-    required this.discordId,
+    required this.accountLinkId,
   });
 
   Map<String, dynamic> toMap() => <String, dynamic>{
@@ -62,16 +96,29 @@ class OAuthStatePayload {
     'nonce': nonce,
     'issuedAt': issuedAt,
     'expiresAt': expiresAt,
-    'discordId': discordId,
+    'accountLinkId': accountLinkId,
   };
 
   factory OAuthStatePayload.fromMap(Map<String, dynamic> map) {
+    String? provider = map['provider'] as String?;
+    String? nonce = map['nonce'] as String?;
+    int? issuedAt = SessionPayload._asInt(map['issuedAt']);
+    int? expiresAt = SessionPayload._asInt(map['expiresAt']);
+    if (provider == null ||
+        provider.isEmpty ||
+        nonce == null ||
+        nonce.isEmpty ||
+        issuedAt == null ||
+        expiresAt == null) {
+      throw StateError('Invalid OAuth state payload.');
+    }
+
     return OAuthStatePayload(
-      provider: map['provider'] as String,
-      nonce: map['nonce'] as String,
-      issuedAt: map['issuedAt'] as int,
-      expiresAt: map['expiresAt'] as int,
-      discordId: map['discordId'] as String?,
+      provider: provider,
+      nonce: nonce,
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
+      accountLinkId: SessionPayload._asNullableString(map['accountLinkId']),
     );
   }
 }
@@ -106,14 +153,16 @@ class OAuthSecurityService {
   int get sessionMaxAgeSeconds => _sessionMaxAgeSeconds;
 
   Future<String> createSessionToken({
-    required String discordId,
-    required String discordUsername,
+    required String accountLinkId,
+    required String? discordId,
+    required String? discordUsername,
     required String? discordGlobalName,
     required String? discordAvatarHash,
   }) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int expiresAt = now + (_sessionMaxAgeSeconds * 1000);
     final SessionPayload payload = SessionPayload(
+      accountLinkId: accountLinkId,
       discordId: discordId,
       discordUsername: discordUsername,
       discordGlobalName: discordGlobalName,
@@ -130,7 +179,12 @@ class OAuthSecurityService {
       return null;
     }
 
-    final SessionPayload payload = SessionPayload.fromMap(map);
+    SessionPayload payload;
+    try {
+      payload = SessionPayload.fromMap(map);
+    } catch (_) {
+      return null;
+    }
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (payload.expiresAt < now) {
       return null;
@@ -141,7 +195,7 @@ class OAuthSecurityService {
 
   Future<String> createOAuthState({
     required String provider,
-    required String? discordId,
+    required String? accountLinkId,
   }) async {
     final int now = DateTime.now().millisecondsSinceEpoch;
     final int expiresAt = now + (_oauthStateMaxAgeSeconds * 1000);
@@ -150,7 +204,7 @@ class OAuthSecurityService {
       nonce: _randomToken(20),
       issuedAt: now,
       expiresAt: expiresAt,
-      discordId: discordId,
+      accountLinkId: accountLinkId,
     );
     return _sign(payload.toMap(), _stateKey);
   }
@@ -164,7 +218,12 @@ class OAuthSecurityService {
       return null;
     }
 
-    final OAuthStatePayload payload = OAuthStatePayload.fromMap(map);
+    OAuthStatePayload payload;
+    try {
+      payload = OAuthStatePayload.fromMap(map);
+    } catch (_) {
+      return null;
+    }
     final int now = DateTime.now().millisecondsSinceEpoch;
     if (payload.provider != provider) {
       return null;

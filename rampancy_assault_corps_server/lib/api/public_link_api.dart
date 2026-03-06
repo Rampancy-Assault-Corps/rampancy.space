@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:fast_log/fast_log.dart';
 import 'package:rampancy_assault_corps_models/rampancy_assault_corps_models.dart';
 import 'package:rampancy_assault_corps_server/config/account_linking_config.dart';
 import 'package:rampancy_assault_corps_server/main.dart';
@@ -26,7 +27,9 @@ class PublicLinkAPI implements Routing {
   Router get router => Router()..get('/status', _status);
 
   Future<Response> _status(Request request) async {
+    verbose('public_link_status_request path=${request.requestedUri.path}');
     if (!config.enabled) {
+      warn('public_link_status_disabled');
       return _jsonResponse(<String, dynamic>{
         'featureEnabled': false,
         'authenticated': false,
@@ -34,6 +37,8 @@ class PublicLinkAPI implements Routing {
         'bungieConnected': false,
         'discord': null,
         'bungie': <String, dynamic>{
+          'primaryMembershipId': null,
+          'primaryMembershipType': null,
           'membershipCount': 0,
           'memberships': <dynamic>[],
         },
@@ -47,6 +52,7 @@ class PublicLinkAPI implements Routing {
 
     final String? token = _cookieValue(request, 'rac_session');
     if (token == null || token.isEmpty) {
+      verbose('public_link_status_no_session');
       return _jsonResponse(_unauthenticated());
     }
 
@@ -54,19 +60,28 @@ class PublicLinkAPI implements Routing {
       token,
     );
     if (session == null) {
+      warn('public_link_status_session_invalid');
       return _jsonResponse(_unauthenticated());
     }
 
-    final AccountLinkStatus status = await links.getStatus(session.discordId);
+    final AccountLinkStatus status = await links.getStatus(
+      session.accountLinkId,
+    );
     final AccountLink? link = status.link;
+    if (link == null) {
+      warn(
+        'public_link_status_missing_account_link accountLinkId=${session.accountLinkId}',
+      );
+      return _jsonResponse(_unauthenticated());
+    }
 
-    final String discordId = link?.discordId ?? session.discordId;
-    final String discordUsername =
-        link?.discordUsername ?? session.discordUsername;
+    final String? discordId = link.discordId ?? session.discordId;
+    final String? discordUsername =
+        link.discordUsername ?? session.discordUsername;
     final String? discordGlobalName =
-        link?.discordGlobalName ?? session.discordGlobalName;
+        link.discordGlobalName ?? session.discordGlobalName;
     final String? discordAvatarHash =
-        link?.discordAvatarHash ?? session.discordAvatarHash;
+        link.discordAvatarHash ?? session.discordAvatarHash;
 
     final List<Map<String, dynamic>> memberships = status.memberships
         .map(
@@ -81,25 +96,37 @@ class PublicLinkAPI implements Routing {
         )
         .toList();
 
-    final bool bungieConnected =
-        (link?.bungieConnected ?? false) && memberships.isNotEmpty;
+    final bool discordConnected =
+        discordId != null &&
+        discordId.isNotEmpty &&
+        discordUsername != null &&
+        discordUsername.isNotEmpty;
+
+    final bool bungieConnected = link.bungieConnected;
 
     final Map<String, dynamic> payload = <String, dynamic>{
       'featureEnabled': true,
       'authenticated': true,
-      'discordConnected': true,
+      'discordConnected': discordConnected,
       'bungieConnected': bungieConnected,
-      'discord': <String, dynamic>{
-        'id': discordId,
-        'username': discordUsername,
-        'globalName': discordGlobalName,
-        'avatarUrl': _avatarUrl(discordId, discordAvatarHash),
-      },
+      'discord': discordConnected
+          ? <String, dynamic>{
+              'id': discordId,
+              'username': discordUsername,
+              'globalName': discordGlobalName,
+              'avatarUrl': _avatarUrl(discordId, discordAvatarHash),
+            }
+          : null,
       'bungie': <String, dynamic>{
+        'primaryMembershipId': link.bungiePrimaryMembershipId,
+        'primaryMembershipType': link.bungiePrimaryMembershipType,
         'membershipCount': memberships.length,
         'memberships': memberships,
       },
     };
+    info(
+      'public_link_status_resolved accountLinkId=${session.accountLinkId} discordConnected=$discordConnected bungieConnected=$bungieConnected memberships=${memberships.length}',
+    );
 
     return _jsonResponse(payload);
   }
@@ -145,6 +172,8 @@ class PublicLinkAPI implements Routing {
       'bungieConnected': false,
       'discord': null,
       'bungie': <String, dynamic>{
+        'primaryMembershipId': null,
+        'primaryMembershipType': null,
         'membershipCount': 0,
         'memberships': <dynamic>[],
       },

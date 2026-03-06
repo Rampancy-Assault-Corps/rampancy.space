@@ -12,6 +12,7 @@ export 'routes/app_router.dart';
 
 // Export screens
 export 'screens/home_screen.dart';
+export 'screens/link_screen.dart';
 export 'screens/about_screen.dart';
 
 // Export utils

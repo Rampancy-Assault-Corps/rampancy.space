@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:fast_log/fast_log.dart';
 import 'package:http/http.dart' as http;
+import 'package:rampancy_assault_corps_web/utils/constants.dart';
 
 class LinkStatusDiscord {
   final String id;
@@ -72,6 +74,8 @@ class LinkStatus {
   final bool authenticated;
   final bool discordConnected;
   final bool bungieConnected;
+  final String? bungiePrimaryMembershipId;
+  final int? bungiePrimaryMembershipType;
   final LinkStatusDiscord? discord;
   final List<LinkStatusMembership> memberships;
 
@@ -80,24 +84,43 @@ class LinkStatus {
     required this.authenticated,
     required this.discordConnected,
     required this.bungieConnected,
+    required this.bungiePrimaryMembershipId,
+    required this.bungiePrimaryMembershipType,
     required this.discord,
     required this.memberships,
   });
 
+  static const LinkStatus fallback = LinkStatus(
+    featureEnabled: true,
+    authenticated: false,
+    discordConnected: false,
+    bungieConnected: false,
+    bungiePrimaryMembershipId: null,
+    bungiePrimaryMembershipType: null,
+    discord: null,
+    memberships: <LinkStatusMembership>[],
+  );
+
   factory LinkStatus.fromMap(Map<String, dynamic> map) {
-    final dynamic discordRaw = map['discord'];
-    final dynamic bungieRaw = map['bungie'];
+    dynamic discordRaw = map['discord'];
+    dynamic bungieRaw = map['bungie'];
 
     LinkStatusDiscord? discord;
     if (discordRaw is Map<String, dynamic>) {
       discord = LinkStatusDiscord.fromMap(discordRaw);
     }
 
-    final List<LinkStatusMembership> memberships = <LinkStatusMembership>[];
+    List<LinkStatusMembership> memberships = <LinkStatusMembership>[];
+    String? bungiePrimaryMembershipId;
+    int? bungiePrimaryMembershipType;
     if (bungieRaw is Map<String, dynamic>) {
-      final dynamic rawMemberships = bungieRaw['memberships'];
+      bungiePrimaryMembershipId = bungieRaw['primaryMembershipId'] as String?;
+      bungiePrimaryMembershipType = LinkStatusMembership._asInt(
+        bungieRaw['primaryMembershipType'],
+      );
+      dynamic rawMemberships = bungieRaw['memberships'];
       if (rawMemberships is List<dynamic>) {
-        for (final dynamic raw in rawMemberships) {
+        for (dynamic raw in rawMemberships) {
           if (raw is Map<String, dynamic>) {
             memberships.add(LinkStatusMembership.fromMap(raw));
           }
@@ -110,6 +133,8 @@ class LinkStatus {
       authenticated: (map['authenticated'] as bool?) ?? false,
       discordConnected: (map['discordConnected'] as bool?) ?? false,
       bungieConnected: (map['bungieConnected'] as bool?) ?? false,
+      bungiePrimaryMembershipId: bungiePrimaryMembershipId,
+      bungiePrimaryMembershipType: bungiePrimaryMembershipType,
       discord: discord,
       memberships: memberships,
     );
@@ -117,34 +142,94 @@ class LinkStatus {
 }
 
 class LinkStatusService {
+  static String authUrl(String path) => _resolveUri(path).toString();
+
   static Future<LinkStatus> fetchStatus() async {
-    final Uri uri = Uri.parse('/api/public/link/status');
-    final http.Response response = await http.get(
-      uri,
-      headers: <String, String>{'Accept': 'application/json'},
-    );
+    try {
+      Uri uri = _resolveUri('/api/public/link/status');
+      network('link_status_fetch_begin uri=$uri');
+      http.Response response = await http.get(
+        uri,
+        headers: <String, String>{'Accept': 'application/json'},
+      );
+      network('link_status_fetch_response status=${response.statusCode}');
 
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError('Status endpoint failed: ${response.statusCode}');
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        warn('link_status_fetch_non_success status=${response.statusCode}');
+        return LinkStatus.fallback;
+      }
+
+      String body = response.body.trimLeft();
+      if (body.startsWith('<')) {
+        warn('link_status_fetch_html_response');
+        return LinkStatus.fallback;
+      }
+
+      dynamic decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        warn('link_status_fetch_invalid_json_shape');
+        return LinkStatus.fallback;
+      }
+
+      LinkStatus status = LinkStatus.fromMap(decoded);
+      verbose(
+        'link_status_fetch_done authenticated=${status.authenticated} bungieConnected=${status.bungieConnected} discordConnected=${status.discordConnected}',
+      );
+      return status;
+    } catch (e) {
+      error('link_status_fetch_error err=$e');
+      return LinkStatus.fallback;
     }
-
-    final dynamic decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic>) {
-      throw StateError('Status endpoint returned invalid JSON object.');
-    }
-
-    return LinkStatus.fromMap(decoded);
   }
 
   static Future<void> logout() async {
-    final Uri uri = Uri.parse('/auth/logout');
-    final http.Response response = await http.post(
+    Uri uri = _resolveUri('/auth/logout');
+    network('link_logout_begin uri=$uri');
+    http.Response response = await http.post(
       uri,
       headers: <String, String>{'Accept': 'application/json'},
     );
+    network('link_logout_response status=${response.statusCode}');
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
+      error('link_logout_failed status=${response.statusCode}');
       throw StateError('Logout failed: ${response.statusCode}');
     }
+    info('link_logout_success');
+  }
+
+  static Future<void> deleteAccount() async {
+    Uri uri = _resolveUri('/auth/account');
+    network('link_delete_begin uri=$uri');
+    http.Response response = await http.delete(
+      uri,
+      headers: <String, String>{'Accept': 'application/json'},
+    );
+    network('link_delete_response status=${response.statusCode}');
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      error('link_delete_failed status=${response.statusCode}');
+      throw StateError('Delete failed: ${response.statusCode}');
+    }
+    info('link_delete_success');
+  }
+
+  static Uri _resolveUri(String path) {
+    String baseUrl = _serverBaseUrl();
+    verbose(
+      'link_resolve_uri path=$path base=${baseUrl.isEmpty ? 'same-origin' : baseUrl}',
+    );
+    if (baseUrl.isEmpty) {
+      return Uri.parse(path);
+    }
+    return Uri.parse('$baseUrl$path');
+  }
+
+  static String _serverBaseUrl() {
+    String configured = ApiConfig.serverApiUrl;
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+    return '';
   }
 }

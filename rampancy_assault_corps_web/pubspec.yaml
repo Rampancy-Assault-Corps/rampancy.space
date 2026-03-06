@@ -47,5 +47,11 @@ scripts:
   build_runner: dart run build_runner build --delete-conflicting-outputs
   watch: dart run build_runner watch --delete-conflicting-outputs
 
-  # Firebase Deployment (run from parent directory)
-  firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting --project rampancy-space
+  # Deployment
+  deploy: jaspr build && cd .. && firebase deploy --only hosting:release --project rampancy-space
+  deploy_all: sh ../scripts/deploy_all.sh
+  deploy_site: sh ../scripts/deploy_site.sh
+  deploy_server: sh ../scripts/deploy_server.sh
+  deploy_firebase_config: sh ../scripts/deploy_firebase_config.sh
+  deploy_both: sh ../scripts/deploy_all.sh
+  firebase_deploy: jaspr build && cd .. && firebase deploy --only hosting:release --project rampancy-space

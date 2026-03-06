@@ -18,7 +18,6 @@ import 'package:rampancy_assault_corps_server/service/media_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_provider_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_security_service.dart';
 import 'package:rampancy_assault_corps_server/util/request_authenticator.dart';
-import 'package:ostrich/ostrich.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart';
 import 'package:shelf_cors_headers/shelf_cors_headers.dart';
@@ -46,20 +45,33 @@ class RampancyAssaultCorpsServer implements Routing {
   static late PublicLinkAPI apiPublicLink;
 
   Future<void> start() async {
+    print('[startup] start');
+    print('[startup] registerCrud');
     registerCrud();
+
+    print('[startup] load_config');
     config = AccountLinkingConfig.fromEnvironment();
+
+    print('[startup] arcane_admin_initialize_begin');
     await ArcaneAdmin.initialize();
+    print('[startup] arcane_admin_initialize_done');
+
     instance = this;
+
+    print('[startup] start_services_and_apis_begin');
     await Future.wait([_startServices(), _startAPIs()]);
+    print('[startup] start_services_and_apis_done');
 
     FirestoreDatabase.instance.debugLogging = false;
 
     authenticator = RequestAuthenticator();
 
     // Start Server
+    print('[startup] bind_port_begin port=${listenPort()}');
     verbose("STARTING rampancy_assault_corps_server");
     server = await serve(_pipeline, InternetAddress.anyIPv4, listenPort());
     verbose("Server listening on port ${server.port}");
+    print('[startup] bind_port_done port=${server.port}');
   }
 
   Future<void> _startServices() async {
@@ -162,4 +174,13 @@ extension XRequest on Request {
 }
 
 void main() =>
-    runFlutterServer((context) => RampancyAssaultCorpsServer().start());
+    runZonedGuarded(() async {
+      print('[startup] main_enter');
+      await RampancyAssaultCorpsServer().start();
+    }, (Object errorValue, StackTrace stackTrace) {
+      print('[startup] unhandled_error err=$errorValue');
+      print('[startup] unhandled_error_stack $stackTrace');
+      error('server_startup_unhandled err=$errorValue');
+      error('server_startup_unhandled_stack stack=$stackTrace');
+      exitCode = 1;
+    });

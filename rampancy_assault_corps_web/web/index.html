@@ -99,7 +99,10 @@
   <script>
     window.addEventListener('load', function() {
       setTimeout(function() {
-        document.getElementById('loading').classList.add('hidden');
+        var loading = document.getElementById('loading');
+        if (loading) {
+          loading.classList.add('hidden');
+        }
       }, 100);
     });
   </script>

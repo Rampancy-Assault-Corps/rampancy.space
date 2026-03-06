@@ -31,6 +31,7 @@ class OAuthAPI implements Routing {
     ..get('/discord/callback', _discordCallback)
     ..get('/bungie/start', _bungieStart)
     ..get('/bungie/callback', _bungieCallback)
+    ..delete('/account', _deleteAccount)
     ..post('/logout', _logout);
 
   Future<Response> _discordStart(Request request) async {
@@ -38,11 +39,28 @@ class OAuthAPI implements Routing {
       return Response.notFound('Not Found');
     }
 
+    info('oauth_discord_start path=${request.requestedUri.path}');
+    SessionPayload? session = await _getSession(request);
+    verbose('oauth_discord_start hasSession=${session != null}');
+    if (session == null) {
+      warn('oauth_discord_start_missing_bungie_session');
+      return _redirectWithError('discord_requires_bungie');
+    }
+
+    AccountLinkStatus status = await links.getStatus(session.accountLinkId);
+    if (!status.bungieConnected || status.link == null) {
+      warn(
+        'oauth_discord_start_missing_bungie_link accountLinkId=${session.accountLinkId}',
+      );
+      return _redirectWithError('discord_requires_bungie');
+    }
+
     final String state = await security.createOAuthState(
       provider: 'discord',
-      discordId: null,
+      accountLinkId: session.accountLinkId,
     );
     final Uri uri = provider.buildDiscordAuthorizeUri(state: state);
+    network('oauth_discord_start_redirect host=${uri.host} path=${uri.path}');
     return Response.found(uri.toString());
   }
 
@@ -53,8 +71,23 @@ class OAuthAPI implements Routing {
 
     final String? code = request.param('code');
     final String? state = request.param('state');
+    final String? providerError = request.param('error');
+    final String? providerErrorDescription = request.param('error_description');
+
+    info('oauth_discord_callback path=${request.requestedUri.path}');
+    verbose(
+      'oauth_discord_callback hasCode=${code != null && code.isNotEmpty} hasState=${state != null && state.isNotEmpty} providerError=$providerError',
+    );
+
+    if (providerError != null && providerError.isNotEmpty) {
+      warn(
+        'oauth_discord_callback_provider_error error=$providerError description=$providerErrorDescription',
+      );
+      return _redirectWithError('discord_provider_error');
+    }
 
     if (code == null || code.isEmpty || state == null || state.isEmpty) {
+      warn('oauth_discord_callback_invalid_query');
       return _redirectWithError('discord_callback_invalid');
     }
 
@@ -64,19 +97,41 @@ class OAuthAPI implements Routing {
     );
 
     if (decodedState == null) {
+      warn('oauth_discord_callback_state_invalid');
       return _redirectWithError('discord_state_invalid');
+    }
+    verbose(
+      'oauth_discord_callback_state_valid accountLinkId=${decodedState.accountLinkId}',
+    );
+
+    String? accountLinkId = decodedState.accountLinkId;
+    if (accountLinkId == null || accountLinkId.isEmpty) {
+      warn('oauth_discord_callback_missing_bungie_account_link');
+      return _redirectWithError('discord_requires_bungie');
+    }
+
+    AccountLinkStatus status = await links.getStatus(accountLinkId);
+    if (!status.bungieConnected || status.link == null) {
+      warn(
+        'oauth_discord_callback_missing_bungie_link accountLinkId=$accountLinkId',
+      );
+      return _redirectWithError('discord_requires_bungie');
     }
 
     try {
       final DiscordProfile profile = await provider
           .exchangeDiscordCodeForProfile(code: code);
-      await links.upsertDiscordLink(profile);
+      AccountLinkRecord link = await links.upsertDiscordLink(
+        profile: profile,
+        accountLinkId: accountLinkId,
+      );
 
       final String session = await security.createSessionToken(
-        discordId: profile.id,
-        discordUsername: profile.username,
-        discordGlobalName: profile.globalName,
-        discordAvatarHash: profile.avatarHash,
+        accountLinkId: link.accountLinkId,
+        discordId: link.link.discordId,
+        discordUsername: link.link.discordUsername,
+        discordGlobalName: link.link.discordGlobalName,
+        discordAvatarHash: link.link.discordAvatarHash,
       );
 
       final String cookie = _sessionCookie(
@@ -84,10 +139,13 @@ class OAuthAPI implements Routing {
         request,
         security.sessionMaxAgeSeconds,
       );
+      verbose(
+        'oauth_discord_callback_cookie_issued maxAge=${security.sessionMaxAgeSeconds}',
+      );
 
-      info('discord_link_success user=${profile.id}');
+      info('discord_link_success accountLinkId=${link.accountLinkId}');
       return Response.found(
-        '/?linked=discord',
+        '/link?linked=discord',
         headers: <String, String>{'Set-Cookie': cookie},
       );
     } catch (e) {
@@ -101,16 +159,15 @@ class OAuthAPI implements Routing {
       return Response.notFound('Not Found');
     }
 
+    info('oauth_bungie_start path=${request.requestedUri.path}');
     final SessionPayload? session = await _getSession(request);
-    if (session == null) {
-      return _redirectWithError('discord_required');
-    }
-
+    verbose('oauth_bungie_start hasSession=${session != null}');
     final String state = await security.createOAuthState(
       provider: 'bungie',
-      discordId: session.discordId,
+      accountLinkId: session?.accountLinkId,
     );
     final Uri uri = provider.buildBungieAuthorizeUri(state: state);
+    network('oauth_bungie_start_redirect host=${uri.host} path=${uri.path}');
     return Response.found(uri.toString());
   }
 
@@ -119,15 +176,25 @@ class OAuthAPI implements Routing {
       return Response.notFound('Not Found');
     }
 
-    final SessionPayload? session = await _getSession(request);
-    if (session == null) {
-      return _redirectWithError('discord_required');
-    }
-
     final String? code = request.param('code');
     final String? state = request.param('state');
+    final String? providerError = request.param('error');
+    final String? providerErrorDescription = request.param('error_description');
+
+    info('oauth_bungie_callback path=${request.requestedUri.path}');
+    verbose(
+      'oauth_bungie_callback hasCode=${code != null && code.isNotEmpty} hasState=${state != null && state.isNotEmpty} providerError=$providerError',
+    );
+
+    if (providerError != null && providerError.isNotEmpty) {
+      warn(
+        'oauth_bungie_callback_provider_error error=$providerError description=$providerErrorDescription',
+      );
+      return _redirectWithError('bungie_provider_error');
+    }
 
     if (code == null || code.isEmpty || state == null || state.isEmpty) {
+      warn('oauth_bungie_callback_invalid_query');
       return _redirectWithError('bungie_callback_invalid');
     }
 
@@ -136,9 +203,26 @@ class OAuthAPI implements Routing {
       provider: 'bungie',
     );
 
-    if (decodedState == null || decodedState.discordId != session.discordId) {
+    if (decodedState == null) {
+      warn('oauth_bungie_callback_state_invalid');
       return _redirectWithError('bungie_state_invalid');
     }
+    verbose(
+      'oauth_bungie_callback_state_valid accountLinkId=${decodedState.accountLinkId}',
+    );
+
+    SessionPayload? session = await _getSession(request);
+    if (session != null &&
+        decodedState.accountLinkId != null &&
+        decodedState.accountLinkId != session.accountLinkId) {
+      warn(
+        'oauth_bungie_callback_state_mismatch session=${session.accountLinkId} state=${decodedState.accountLinkId}',
+      );
+      return _redirectWithError('bungie_state_invalid');
+    }
+
+    String? accountLinkId =
+        decodedState.accountLinkId ?? session?.accountLinkId;
 
     try {
       final BungieOAuthResult result = await provider.exchangeBungieCode(
@@ -148,18 +232,83 @@ class OAuthAPI implements Routing {
         result.refreshToken,
       );
 
-      await links.upsertBungieLink(
-        discordId: session.discordId,
+      AccountLinkRecord link = await links.upsertBungieLink(
+        accountLinkId: accountLinkId,
         encryptedRefreshToken: encrypted,
         refreshExpiresAt: result.refreshExpiresAt,
         memberships: result.memberships,
       );
 
-      info('bungie_link_success user=${session.discordId}');
-      return Response.found('/?linked=bungie');
+      String newSession = await security.createSessionToken(
+        accountLinkId: link.accountLinkId,
+        discordId: link.link.discordId,
+        discordUsername: link.link.discordUsername,
+        discordGlobalName: link.link.discordGlobalName,
+        discordAvatarHash: link.link.discordAvatarHash,
+      );
+      String cookie = _sessionCookie(
+        newSession,
+        request,
+        security.sessionMaxAgeSeconds,
+      );
+      verbose(
+        'oauth_bungie_callback_cookie_issued maxAge=${security.sessionMaxAgeSeconds}',
+      );
+
+      info('bungie_link_success accountLinkId=${link.accountLinkId}');
+      return Response.found(
+        '/link?linked=bungie',
+        headers: <String, String>{'Set-Cookie': cookie},
+      );
     } catch (e) {
-      error('bungie_link_failed user=${session.discordId} err=$e');
+      error('bungie_link_failed accountLinkId=$accountLinkId err=$e');
       return _redirectWithError('bungie_link_failed');
+    }
+  }
+
+  Future<Response> _deleteAccount(Request request) async {
+    if (!config.enabled) {
+      return Response.notFound('Not Found');
+    }
+
+    info('oauth_delete_account path=${request.requestedUri.path}');
+    SessionPayload? session = await _getSession(request);
+    String cookie = _clearSessionCookie(request);
+    if (session == null) {
+      warn('oauth_delete_account_missing_session');
+      return Response.forbidden(
+        jsonEncode(<String, dynamic>{'ok': false, 'error': 'unauthorized'}),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+          'Set-Cookie': cookie,
+        },
+      );
+    }
+
+    try {
+      await links.deleteAccountLink(session.accountLinkId);
+      info('oauth_delete_account_done accountLinkId=${session.accountLinkId}');
+      return Response.ok(
+        jsonEncode(<String, dynamic>{'ok': true}),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+          'Set-Cookie': cookie,
+        },
+      );
+    } catch (e) {
+      error(
+        'oauth_delete_account_failed accountLinkId=${session.accountLinkId} err=$e',
+      );
+      return Response.internalServerError(
+        body: jsonEncode(<String, dynamic>{
+          'ok': false,
+          'error': 'delete_failed',
+        }),
+        headers: <String, String>{
+          'Content-Type': 'application/json',
+          'Set-Cookie': cookie,
+        },
+      );
     }
   }
 
@@ -168,6 +317,7 @@ class OAuthAPI implements Routing {
       return Response.notFound('Not Found');
     }
 
+    info('oauth_logout path=${request.requestedUri.path}');
     final String cookie = _clearSessionCookie(request);
     final String body = jsonEncode(<String, dynamic>{'ok': true});
     return Response.ok(
@@ -182,10 +332,13 @@ class OAuthAPI implements Routing {
   Future<SessionPayload?> _getSession(Request request) async {
     final String? token = _cookieValue(request, 'rac_session');
     if (token == null || token.isEmpty) {
+      verbose('oauth_session_missing_cookie');
       return null;
     }
 
-    return security.verifySessionToken(token);
+    SessionPayload? session = await security.verifySessionToken(token);
+    verbose('oauth_session_verified=${session != null}');
+    return session;
   }
 
   String? _cookieValue(Request request, String key) {
@@ -226,6 +379,6 @@ class OAuthAPI implements Routing {
   }
 
   Response _redirectWithError(String code) {
-    return Response.found('/?error=$code');
+    return Response.found('/link?error=$code');
   }
 }
