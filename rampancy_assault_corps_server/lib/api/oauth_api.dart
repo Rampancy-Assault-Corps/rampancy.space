@@ -299,8 +299,10 @@ class OAuthAPI implements Routing {
 
     info('oauth_delete_account path=${request.requestedUri.path}');
     SessionPayload? session = await _getSession(request);
+    String? accountLinkId = session?.accountLinkId;
+    accountLinkId ??= await _resolveAccountLinkId(request);
     String cookie = _clearSessionCookie(request);
-    if (session == null) {
+    if (accountLinkId == null || accountLinkId.isEmpty) {
       warn('oauth_delete_account_missing_session');
       return Response.forbidden(
         jsonEncode(<String, dynamic>{'ok': false, 'error': 'unauthorized'}),
@@ -312,8 +314,8 @@ class OAuthAPI implements Routing {
     }
 
     try {
-      await links.deleteAccountLink(session.accountLinkId);
-      info('oauth_delete_account_done accountLinkId=${session.accountLinkId}');
+      await links.deleteAccountLink(accountLinkId);
+      info('oauth_delete_account_done accountLinkId=$accountLinkId');
       return Response.ok(
         jsonEncode(<String, dynamic>{'ok': true}),
         headers: <String, String>{
@@ -322,9 +324,7 @@ class OAuthAPI implements Routing {
         },
       );
     } catch (e) {
-      error(
-        'oauth_delete_account_failed accountLinkId=${session.accountLinkId} err=$e',
-      );
+      error('oauth_delete_account_failed accountLinkId=$accountLinkId err=$e');
       return Response.internalServerError(
         body: jsonEncode(<String, dynamic>{
           'ok': false,
@@ -384,7 +384,7 @@ class OAuthAPI implements Routing {
       return null;
     }
 
-    String? resumeToken = request.requestedUri.queryParameters['resume'];
+    String? resumeToken = _resumeToken(request);
     if (resumeToken == null || resumeToken.isEmpty) {
       return null;
     }
@@ -393,6 +393,20 @@ class OAuthAPI implements Routing {
       resumeToken,
     );
     return resume?.accountLinkId;
+  }
+
+  String? _resumeToken(Request request) {
+    String? headerToken = request.headers['x-rac-link-resume'];
+    if (headerToken != null && headerToken.isNotEmpty) {
+      return headerToken;
+    }
+
+    String? queryToken = request.requestedUri.queryParameters['resume'];
+    if (queryToken != null && queryToken.isNotEmpty) {
+      return queryToken;
+    }
+
+    return null;
   }
 
   String? _cookieValue(Request request, String key) {

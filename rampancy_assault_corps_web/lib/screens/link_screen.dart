@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:fast_log/fast_log.dart';
 import 'package:rampancy_assault_corps_web/components/rac_shell.dart';
@@ -20,6 +22,7 @@ class LinkScreen extends StatefulComponent {
 class _LinkScreenState extends State<LinkScreen> {
   static const int _statusRetryLimit = 3;
   static const String _resumeStorageKey = 'rac_link_resume';
+  static const Duration _loadingStageLimit = Duration(seconds: 2);
 
   LinkStatus? _status;
   bool _loading = true;
@@ -29,12 +32,20 @@ class _LinkScreenState extends State<LinkScreen> {
   String? _notice;
   String? _recentlyLinkedProvider;
   String? _resumeToken;
+  Timer? _loadingTimer;
 
   @override
   void initState() {
     super.initState();
     _hydrateQueryState();
+    _startLoadingTimer();
     _loadStatus();
+  }
+
+  @override
+  void dispose() {
+    _loadingTimer?.cancel();
+    super.dispose();
   }
 
   void _hydrateQueryState() {
@@ -102,6 +113,7 @@ class _LinkScreenState extends State<LinkScreen> {
       _status = status;
       _loading = false;
     });
+    _loadingTimer?.cancel();
     info(
       'link_status_load_done authenticated=${status.authenticated} bungieConnected=${status.bungieConnected} discordConnected=${status.discordConnected}',
     );
@@ -117,6 +129,19 @@ class _LinkScreenState extends State<LinkScreen> {
       }
       await _loadStatus(attempt: attempt + 1);
     }
+  }
+
+  void _startLoadingTimer() {
+    _loadingTimer?.cancel();
+    _loadingTimer = Timer(_loadingStageLimit, () {
+      if (!mounted || !_loading) {
+        return;
+      }
+      warn('link_status_loading_timeout_reached');
+      setState(() {
+        _loading = false;
+      });
+    });
   }
 
   void _connectBungie() {
@@ -173,13 +198,18 @@ class _LinkScreenState extends State<LinkScreen> {
       return;
     }
 
+    bool confirmed = web.window.confirm('DELETE YOUR LINKED ACCOUNT DATA?');
+    if (!confirmed) {
+      return;
+    }
+
     setState(() {
       _deleteLoading = true;
     });
     info('link_delete_pressed');
 
     try {
-      await LinkStatusService.deleteAccount();
+      await LinkStatusService.deleteAccount(resumeToken: _resumeToken);
       _clearResumeToken();
       web.window.location.href = '${AppRoutes.link}?deleted=account';
     } catch (e) {
@@ -248,25 +278,28 @@ class _LinkScreenState extends State<LinkScreen> {
       );
     }
 
-    List<Component> utilityChildren = <Component>[];
-    if (status.sessionAuthenticated) {
-      utilityChildren.add(
+    bool canDelete =
+        status.authenticated ||
+        (_resumeToken != null && _resumeToken!.isNotEmpty);
+
+    List<Component> utilityChildren = <Component>[
+      if (status.sessionAuthenticated)
         RacActionButton(
           label: _logoutLoading ? 'LOGGING OUT...' : 'LOG OUT',
           onPressed: _logoutLoading ? null : _logout,
           disabled: _logoutLoading,
           tone: RacActionTone.muted,
         ),
-      );
-      utilityChildren.add(
-        RacActionButton(
-          label: _deleteLoading ? 'DELETING...' : 'DELETE LINKED DATA',
+      if (canDelete)
+        RacIconButton(
+          icon: ArcaneIcon.trash(size: IconSize.md),
+          label: _deleteLoading ? 'DELETING LINKED DATA' : 'DELETE LINKED DATA',
           onPressed: _deleteLoading ? null : _deleteAccount,
           disabled: _deleteLoading,
           tone: RacActionTone.destructive,
+          className: 'rac-utility__delete',
         ),
-      );
-    }
+    ];
 
     return RacShell(
       pageClassName: 'rac-shell--link',

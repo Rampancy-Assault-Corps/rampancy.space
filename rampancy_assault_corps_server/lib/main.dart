@@ -14,6 +14,7 @@ import 'package:rampancy_assault_corps_server/config/account_linking_config.dart
 import 'package:rampancy_assault_corps_server/service/account_link_service.dart';
 import 'package:rampancy_assault_corps_server/service/user_service.dart';
 import 'package:rampancy_assault_corps_server/service/command_service.dart';
+import 'package:rampancy_assault_corps_server/service/link_sync_state_service.dart';
 import 'package:rampancy_assault_corps_server/service/media_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_provider_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_security_service.dart';
@@ -33,6 +34,7 @@ class RampancyAssaultCorpsServer implements Routing {
   static late UserService svcUser;
   static late CommandService svcCommand;
   static late MediaService svcMedia;
+  static late LinkSyncStateService svcLinkSyncState;
   static late AccountLinkService svcAccountLink;
   static OAuthProviderService? svcOAuthProvider;
   static OAuthSecurityService? svcOAuthSecurity;
@@ -78,7 +80,8 @@ class RampancyAssaultCorpsServer implements Routing {
     svcUser = UserService();
     svcCommand = CommandService();
     svcMedia = MediaService();
-    svcAccountLink = AccountLinkService();
+    svcLinkSyncState = LinkSyncStateService();
+    svcAccountLink = AccountLinkService(syncState: svcLinkSyncState);
     if (config.enabled) {
       svcOAuthProvider = OAuthProviderService(config);
       svcOAuthSecurity = OAuthSecurityService(config);

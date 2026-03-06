@@ -64,7 +64,7 @@ class RacShell extends StatelessComponent {
         a(
           [
             img(
-              src: '/assets/raclogo.svg',
+              src: '/assets/raclogo-white.svg',
               alt: 'Rampancy Assault Corps',
               classes: 'rac-header__logo',
             ),
@@ -107,6 +107,7 @@ class RacActionButton extends StatelessComponent {
   final VoidCallback? onPressed;
   final RacActionTone tone;
   final bool disabled;
+  final String className;
 
   const RacActionButton({
     super.key,
@@ -115,6 +116,7 @@ class RacActionButton extends StatelessComponent {
     this.onPressed,
     this.tone = RacActionTone.primary,
     this.disabled = false,
+    this.className = '',
   });
 
   @override
@@ -125,6 +127,9 @@ class RacActionButton extends StatelessComponent {
       RacActionTone.destructive => 'rac-action--destructive',
     };
     String classes = 'rac-action $toneClass';
+    if (className.isNotEmpty) {
+      classes = '$classes $className';
+    }
     if (disabled) {
       classes = '$classes is-disabled';
     }
@@ -138,6 +143,50 @@ class RacActionButton extends StatelessComponent {
       classes: classes,
       type: ButtonType.button,
       disabled: disabled,
+      onClick: disabled ? null : onPressed,
+    );
+  }
+}
+
+class RacIconButton extends StatelessComponent {
+  final Component icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final RacActionTone tone;
+  final bool disabled;
+  final String className;
+
+  const RacIconButton({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.onPressed,
+    this.tone = RacActionTone.primary,
+    this.disabled = false,
+    this.className = '',
+  });
+
+  @override
+  Component build(BuildContext context) {
+    String toneClass = switch (tone) {
+      RacActionTone.primary => 'rac-icon-action--primary',
+      RacActionTone.muted => 'rac-icon-action--muted',
+      RacActionTone.destructive => 'rac-icon-action--destructive',
+    };
+    String classes = 'rac-icon-action $toneClass';
+    if (className.isNotEmpty) {
+      classes = '$classes $className';
+    }
+    if (disabled) {
+      classes = '$classes is-disabled';
+    }
+
+    return button(
+      [icon],
+      classes: classes,
+      type: ButtonType.button,
+      disabled: disabled,
+      attributes: <String, String>{'aria-label': label, 'title': label},
       onClick: disabled ? null : onPressed,
     );
   }

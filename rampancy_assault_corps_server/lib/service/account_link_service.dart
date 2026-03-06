@@ -1,5 +1,6 @@
 import 'package:fast_log/fast_log.dart';
 import 'package:rampancy_assault_corps_models/rampancy_assault_corps_models.dart';
+import 'package:rampancy_assault_corps_server/service/link_sync_state_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_provider_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_security_service.dart';
 
@@ -24,7 +25,26 @@ class AccountLinkStatus {
   });
 }
 
+class _CachedAccountLinkStatus {
+  final AccountLinkStatus status;
+  final int expiresAt;
+
+  const _CachedAccountLinkStatus({
+    required this.status,
+    required this.expiresAt,
+  });
+}
+
 class AccountLinkService {
+  static const Duration _statusCacheTtl = Duration(seconds: 20);
+
+  final LinkSyncStateService syncState;
+  final Map<String, _CachedAccountLinkStatus> _statusCache;
+
+  AccountLinkService({LinkSyncStateService? syncState})
+    : syncState = syncState ?? LinkSyncStateService(),
+      _statusCache = <String, _CachedAccountLinkStatus>{};
+
   Future<AccountLinkRecord> upsertDiscordLink({
     required DiscordProfile profile,
     required String? accountLinkId,
@@ -45,6 +65,7 @@ class AccountLinkService {
       );
     }
 
+    AccountLink previousState = target;
     if (existingForDiscord != null &&
         target.accountLinkId != existingForDiscord.accountLinkId) {
       warn(
@@ -64,6 +85,7 @@ class AccountLinkService {
         updatedAt: now,
       );
       await $crud.setAccountLink(existingForDiscord.accountLinkId, detached);
+      _invalidateStatuses(<String>[existingForDiscord.accountLinkId]);
       existingForDiscord = null;
     }
 
@@ -80,6 +102,12 @@ class AccountLinkService {
     );
 
     await $crud.setAccountLink(currentId, next);
+    _invalidateStatuses(<String>[currentId]);
+    await _recordStateChange(
+      accountLinkId: currentId,
+      previous: previousState,
+      next: next,
+    );
     info('account_link_discord_upsert_updated accountLinkId=$currentId');
     return AccountLinkRecord(accountLinkId: currentId, link: next);
   }
@@ -122,6 +150,14 @@ class AccountLinkService {
     _storeExistingLink(existingLinks, sessionLink);
     _storeExistingLink(existingLinks, existingAtTargetId);
     _storeExistingLink(existingLinks, existingForPrimaryKey);
+    AccountLink? previousState = _mergedLinkState(
+      links: <AccountLink?>[
+        existingAtTargetId,
+        sessionLink,
+        existingForPrimaryKey,
+      ],
+      now: now,
+    );
 
     AccountLink next = AccountLink(
       discordId: _firstNonEmptyString(<String?>[
@@ -171,8 +207,14 @@ class AccountLinkService {
       if (entry.key == targetAccountLinkId) {
         continue;
       }
-      await deleteAccountLink(entry.key);
+      await deleteAccountLink(entry.key, emitSyncEvent: false);
     }
+    _invalidateStatuses(<String>[targetAccountLinkId, ...existingLinks.keys]);
+    await _recordStateChange(
+      accountLinkId: targetAccountLinkId,
+      previous: previousState,
+      next: next,
+    );
 
     info('account_link_bungie_upsert_saved accountLinkId=$targetAccountLinkId');
     return AccountLinkRecord(accountLinkId: targetAccountLinkId, link: next);
@@ -181,22 +223,25 @@ class AccountLinkService {
   Future<AccountLinkStatus> getStatus(String accountLinkId) async {
     verbose('account_link_status_begin accountLinkId=$accountLinkId');
     if (accountLinkId.isEmpty) {
-      return const AccountLinkStatus(
-        discordConnected: false,
-        bungieConnected: false,
-        link: null,
-        memberships: <BungieMembership>[],
-      );
+      return _emptyStatus();
+    }
+
+    int now = DateTime.now().millisecondsSinceEpoch;
+    _pruneStatusCache(now);
+    _CachedAccountLinkStatus? cached = _statusCache[accountLinkId];
+    if (cached != null && cached.expiresAt > now) {
+      verbose('account_link_status_cache_hit accountLinkId=$accountLinkId');
+      return cached.status;
     }
 
     AccountLink? link = await $crud.getAccountLink(accountLinkId);
     if (link == null) {
-      return const AccountLinkStatus(
-        discordConnected: false,
-        bungieConnected: false,
-        link: null,
-        memberships: <BungieMembership>[],
+      AccountLinkStatus emptyStatus = _emptyStatus();
+      _statusCache[accountLinkId] = _CachedAccountLinkStatus(
+        status: emptyStatus,
+        expiresAt: now + _statusCacheTtl.inMilliseconds,
       );
+      return emptyStatus;
     }
 
     AccountLink model = $crud.accountLinkModel(accountLinkId);
@@ -205,15 +250,23 @@ class AccountLinkService {
       'account_link_status_resolved accountLinkId=$accountLinkId discordConnected=${_isDiscordConnected(link)} bungieConnected=${link.bungieConnected} memberships=${memberships.length}',
     );
 
-    return AccountLinkStatus(
+    AccountLinkStatus status = AccountLinkStatus(
       discordConnected: _isDiscordConnected(link),
       bungieConnected: link.bungieConnected,
       link: link,
       memberships: memberships,
     );
+    _statusCache[accountLinkId] = _CachedAccountLinkStatus(
+      status: status,
+      expiresAt: now + _statusCacheTtl.inMilliseconds,
+    );
+    return status;
   }
 
-  Future<void> deleteAccountLink(String accountLinkId) async {
+  Future<void> deleteAccountLink(
+    String accountLinkId, {
+    bool emitSyncEvent = true,
+  }) async {
     if (accountLinkId.isEmpty) {
       return;
     }
@@ -233,6 +286,14 @@ class AccountLinkService {
           .deleteBungieMembership(membership.bungieMembershipId);
     }
     await $crud.deleteAccountLink(accountLinkId);
+    _invalidateStatuses(<String>[accountLinkId]);
+    if (emitSyncEvent) {
+      await _recordStateChange(
+        accountLinkId: accountLinkId,
+        previous: link,
+        next: null,
+      );
+    }
     info(
       'account_link_delete_done accountLinkId=$accountLinkId memberships=${memberships.length}',
     );
@@ -277,6 +338,32 @@ class AccountLinkService {
       'account_link_find_by_bungie_key hit key=$key accountLinkId=${matches.first.accountLinkId}',
     );
     return matches.first;
+  }
+
+  AccountLinkStatus _emptyStatus() {
+    return const AccountLinkStatus(
+      discordConnected: false,
+      bungieConnected: false,
+      link: null,
+      memberships: <BungieMembership>[],
+    );
+  }
+
+  void _invalidateStatuses(List<String> accountLinkIds) {
+    int now = DateTime.now().millisecondsSinceEpoch;
+    _pruneStatusCache(now);
+    for (String accountLinkId in accountLinkIds) {
+      if (accountLinkId.isEmpty) {
+        continue;
+      }
+      _statusCache.remove(accountLinkId);
+    }
+  }
+
+  void _pruneStatusCache(int now) {
+    _statusCache.removeWhere(
+      (String _, _CachedAccountLinkStatus entry) => entry.expiresAt <= now,
+    );
   }
 
   void _storeExistingLink(
@@ -326,9 +413,29 @@ class AccountLinkService {
         await parent.deleteBungieMembership(existingId);
       }
     }
+
     verbose(
       'account_link_sync_memberships_done accountLinkId=$accountLinkId kept=${keepIds.length}',
     );
+  }
+
+  Future<void> _recordStateChange({
+    required String accountLinkId,
+    required AccountLink? previous,
+    required AccountLink? next,
+  }) async {
+    try {
+      await syncState.recordAccountLinkStateChange(
+        accountLinkId: accountLinkId,
+        previous: previous,
+        next: next,
+      );
+    } on Object catch (caughtError, stackTrace) {
+      error(
+        'account_link_sync_state_record_failed accountLinkId=$accountLinkId err=$caughtError',
+      );
+      error(stackTrace.toString());
+    }
   }
 
   BungieMembershipData? _primaryMembership(
@@ -352,6 +459,73 @@ class AccountLinkService {
     return _membershipDocumentId(
       membership.membershipType,
       membership.membershipId,
+    );
+  }
+
+  AccountLink? _mergedLinkState({
+    required List<AccountLink?> links,
+    required int now,
+  }) {
+    bool hasLink = false;
+    for (AccountLink? link in links) {
+      if (link != null) {
+        hasLink = true;
+        break;
+      }
+    }
+    if (!hasLink) {
+      return null;
+    }
+
+    return AccountLink(
+      discordId: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.discordId).toList(),
+      ),
+      discordUsername: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.discordUsername).toList(),
+      ),
+      discordGlobalName: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.discordGlobalName).toList(),
+      ),
+      discordAvatarHash: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.discordAvatarHash).toList(),
+      ),
+      discordLinkedAt: _firstNonNullInt(
+        links.map((AccountLink? link) => link?.discordLinkedAt).toList(),
+      ),
+      bungieConnected: links.any(
+        (AccountLink? link) => link?.bungieConnected ?? false,
+      ),
+      bungiePrimaryMembershipKey: _firstNonEmptyString(
+        links
+            .map((AccountLink? link) => link?.bungiePrimaryMembershipKey)
+            .toList(),
+      ),
+      bungiePrimaryMembershipId: _firstNonEmptyString(
+        links
+            .map((AccountLink? link) => link?.bungiePrimaryMembershipId)
+            .toList(),
+      ),
+      bungiePrimaryMembershipType: _firstNonNullInt(
+        links
+            .map((AccountLink? link) => link?.bungiePrimaryMembershipType)
+            .toList(),
+      ),
+      bungieLinkedAt: _firstNonNullInt(
+        links.map((AccountLink? link) => link?.bungieLinkedAt).toList(),
+      ),
+      bungieRefreshCiphertext: _firstNonEmptyString(
+        links
+            .map((AccountLink? link) => link?.bungieRefreshCiphertext)
+            .toList(),
+      ),
+      bungieRefreshNonce: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.bungieRefreshNonce).toList(),
+      ),
+      bungieRefreshExpiresAt: _firstNonNullInt(
+        links.map((AccountLink? link) => link?.bungieRefreshExpiresAt).toList(),
+      ),
+      updatedAt: now,
     );
   }
 

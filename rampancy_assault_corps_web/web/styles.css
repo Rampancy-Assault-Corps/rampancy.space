@@ -150,7 +150,6 @@ select {
   height: auto;
   display: block;
   flex: 0 0 auto;
-  filter: brightness(0) invert(1);
 }
 
 .rac-header__meta {
@@ -191,18 +190,14 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: 2px solid rgba(255, 194, 194, 0.72);
-  border-radius: 10px 10px 16px 16px;
-  color: rgba(255, 194, 194, 0.72);
 }
 
 .rac-header__github-icon-image {
-  width: 18px;
-  height: 18px;
+  width: 30px;
+  height: 30px;
   display: block;
   object-fit: contain;
+  filter: brightness(0) invert(1);
 }
 
 .rac-header__github-copy {
@@ -243,10 +238,12 @@ select {
   display: flex;
   flex: 1;
   min-height: 0;
+  width: 100%;
 }
 
 .rac-main {
   flex: 1;
+  width: 100%;
   min-height: clamp(460px, 72vh, 980px);
   display: flex;
   background: var(--rac-blue);
@@ -274,6 +271,7 @@ select {
 }
 
 .rac-main--split {
+  width: 100%;
   padding: 8px;
   background: var(--rac-blue-edge);
 }
@@ -299,6 +297,7 @@ select {
 
 .rac-panel-stack {
   flex: 1;
+  width: 100%;
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -479,6 +478,62 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  justify-content: flex-end;
+  padding: 0 30px;
+}
+
+.rac-icon-action {
+  min-width: 54px;
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 2px solid rgba(244, 247, 251, 0.44);
+  background: rgba(244, 247, 251, 0.04);
+  color: var(--rac-text);
+  transition:
+    transform 180ms ease,
+    background 180ms ease,
+    opacity 180ms ease,
+    border-color 180ms ease;
+}
+
+.rac-icon-action svg {
+  width: 22px;
+  height: 22px;
+}
+
+.rac-icon-action--muted {
+  color: var(--rac-muted);
+  border-color: rgba(244, 247, 251, 0.44);
+}
+
+.rac-icon-action--destructive {
+  color: var(--rac-danger);
+  border-color: var(--rac-danger);
+}
+
+.rac-icon-action--primary {
+  color: var(--rac-text);
+}
+
+.rac-icon-action:hover {
+  transform: translateY(-2px);
+  background: rgba(244, 247, 251, 0.08);
+}
+
+.rac-icon-action:active {
+  transform: translateY(0);
+}
+
+.rac-icon-action.is-disabled {
+  pointer-events: none;
+  opacity: 0.52;
+}
+
+.rac-utility__delete {
+  margin-left: auto;
 }
 
 .rac-footer {
@@ -644,6 +699,12 @@ a:hover {
 
   .rac-utilities {
     display: grid;
+    padding: 0 18px;
+  }
+
+  .rac-utility__delete {
+    margin-left: 0;
+    justify-self: end;
   }
 }
 

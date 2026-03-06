@@ -146,6 +146,8 @@ class LinkStatus {
 }
 
 class LinkStatusService {
+  static const Duration _statusRequestTimeout = Duration(seconds: 2);
+
   static String authUrl(String path, {String? resumeToken}) =>
       _resolveUri(_pathWithResume(path, resumeToken)).toString();
 
@@ -153,10 +155,9 @@ class LinkStatusService {
     try {
       Uri uri = _resolveUri('/api/public/link/status');
       network('link_status_fetch_begin uri=$uri');
-      http.Response response = await http.get(
-        uri,
-        headers: _headers(resumeToken),
-      );
+      http.Response response = await http
+          .get(uri, headers: _headers(resumeToken))
+          .timeout(_statusRequestTimeout);
       network('link_status_fetch_response status=${response.statusCode}');
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -203,12 +204,12 @@ class LinkStatusService {
     info('link_logout_success');
   }
 
-  static Future<void> deleteAccount() async {
-    Uri uri = _resolveUri('/auth/account');
+  static Future<void> deleteAccount({String? resumeToken}) async {
+    Uri uri = _resolveUri(_pathWithResume('/auth/account', resumeToken));
     network('link_delete_begin uri=$uri');
     http.Response response = await http.delete(
       uri,
-      headers: <String, String>{'Accept': 'application/json'},
+      headers: _headers(resumeToken),
     );
     network('link_delete_response status=${response.statusCode}');
 
