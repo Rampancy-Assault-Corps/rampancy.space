@@ -28,8 +28,10 @@ class RouterOutlet extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
-    String path = context.url;
-    verbose('Routing to path: $path');
+    String rawUrl = context.url;
+    Uri uri = Uri.parse(rawUrl);
+    String path = uri.path;
+    verbose('Routing to url: $rawUrl path: $path');
 
     if (path == AppRoutes.about) {
       navigation('Navigating to About');

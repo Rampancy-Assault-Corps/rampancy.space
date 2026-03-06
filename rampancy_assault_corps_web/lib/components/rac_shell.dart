@@ -28,6 +28,37 @@ class RacShell extends StatelessComponent {
       shellClasses = '$shellClasses $pageClassName';
     }
 
+    List<Component> githubChildren = <Component>[
+      div([
+        img(
+          src: '/assets/github.png',
+          alt: 'GitHub',
+          classes: 'rac-header__github-icon-image',
+        ),
+      ], classes: 'rac-header__github-icon'),
+      div([
+        div([
+          Component.text('OPEN SOURCE'),
+        ], classes: 'rac-header__github-label'),
+        div([
+          Component.text('PUBLIC REPOSITORY'),
+        ], classes: 'rac-header__github-value'),
+      ], classes: 'rac-header__github-copy'),
+    ];
+
+    Component githubBadge = div(githubChildren, classes: 'rac-header__github');
+    if (AppConstants.githubUrl.isNotEmpty) {
+      githubBadge = a(
+        githubChildren,
+        href: AppConstants.githubUrl,
+        attributes: <String, String>{
+          'target': '_blank',
+          'rel': 'noopener noreferrer',
+        },
+        classes: 'rac-header__github',
+      );
+    }
+
     return div([
       header([
         a(
@@ -49,6 +80,7 @@ class RacShell extends StatelessComponent {
           href: AppRoutes.home,
           classes: 'rac-header__brand',
         ),
+        githubBadge,
       ], classes: 'rac-header'),
       main_([
         if (preludeChildren.isNotEmpty)

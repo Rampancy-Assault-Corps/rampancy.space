@@ -46,24 +46,24 @@ class OAuthAPI implements Routing {
     }
 
     info('oauth_discord_start path=${request.requestedUri.path}');
-    SessionPayload? session = await _getSession(request);
-    verbose('oauth_discord_start hasSession=${session != null}');
-    if (session == null) {
+    String? accountLinkId = await _resolveAccountLinkId(request);
+    verbose('oauth_discord_start accountLinkId=$accountLinkId');
+    if (accountLinkId == null || accountLinkId.isEmpty) {
       warn('oauth_discord_start_missing_bungie_session');
       return _redirectWithError('discord_requires_bungie');
     }
 
-    AccountLinkStatus status = await links.getStatus(session.accountLinkId);
+    AccountLinkStatus status = await links.getStatus(accountLinkId);
     if (!status.bungieConnected || status.link == null) {
       warn(
-        'oauth_discord_start_missing_bungie_link accountLinkId=${session.accountLinkId}',
+        'oauth_discord_start_missing_bungie_link accountLinkId=$accountLinkId',
       );
       return _redirectWithError('discord_requires_bungie');
     }
 
     final String state = await currentSecurity.createOAuthState(
       provider: 'discord',
-      accountLinkId: session.accountLinkId,
+      accountLinkId: accountLinkId,
     );
     final Uri uri = currentProvider.buildDiscordAuthorizeUri(state: state);
     network('oauth_discord_start_redirect host=${uri.host} path=${uri.path}');
@@ -152,11 +152,14 @@ class OAuthAPI implements Routing {
       verbose(
         'oauth_discord_callback_cookie_issued maxAge=${currentSecurity.sessionMaxAgeSeconds}',
       );
+      final String resumeToken = await currentSecurity.createLinkResumeToken(
+        accountLinkId: link.accountLinkId,
+      );
 
       info('discord_link_success accountLinkId=${link.accountLinkId}');
-      return Response.found(
-        '/link?linked=discord',
-        headers: <String, String>{'Set-Cookie': cookie},
+      return _redirectDocument(
+        location: _linkLocation(linked: 'discord', resumeToken: resumeToken),
+        cookie: cookie,
       );
     } catch (e) {
       error('discord_link_failed err=$e');
@@ -176,11 +179,11 @@ class OAuthAPI implements Routing {
     }
 
     info('oauth_bungie_start path=${request.requestedUri.path}');
-    final SessionPayload? session = await _getSession(request);
-    verbose('oauth_bungie_start hasSession=${session != null}');
+    final String? accountLinkId = await _resolveAccountLinkId(request);
+    verbose('oauth_bungie_start accountLinkId=$accountLinkId');
     final String state = await currentSecurity.createOAuthState(
       provider: 'bungie',
-      accountLinkId: session?.accountLinkId,
+      accountLinkId: accountLinkId,
     );
     final Uri uri = currentProvider.buildBungieAuthorizeUri(state: state);
     network('oauth_bungie_start_redirect host=${uri.host} path=${uri.path}');
@@ -274,11 +277,14 @@ class OAuthAPI implements Routing {
       verbose(
         'oauth_bungie_callback_cookie_issued maxAge=${currentSecurity.sessionMaxAgeSeconds}',
       );
+      final String resumeToken = await currentSecurity.createLinkResumeToken(
+        accountLinkId: link.accountLinkId,
+      );
 
       info('bungie_link_success accountLinkId=${link.accountLinkId}');
-      return Response.found(
-        '/link?linked=bungie',
-        headers: <String, String>{'Set-Cookie': cookie},
+      return _redirectDocument(
+        location: _linkLocation(linked: 'bungie', resumeToken: resumeToken),
+        cookie: cookie,
       );
     } catch (e) {
       error('bungie_link_failed accountLinkId=$accountLinkId err=$e');
@@ -367,6 +373,28 @@ class OAuthAPI implements Routing {
     return session;
   }
 
+  Future<String?> _resolveAccountLinkId(Request request) async {
+    SessionPayload? session = await _getSession(request);
+    if (session != null) {
+      return session.accountLinkId;
+    }
+
+    OAuthSecurityService? currentSecurity = security;
+    if (currentSecurity == null) {
+      return null;
+    }
+
+    String? resumeToken = request.requestedUri.queryParameters['resume'];
+    if (resumeToken == null || resumeToken.isEmpty) {
+      return null;
+    }
+
+    LinkResumePayload? resume = await currentSecurity.verifyLinkResumeToken(
+      resumeToken,
+    );
+    return resume?.accountLinkId;
+  }
+
   String? _cookieValue(Request request, String key) {
     final String? cookieHeader = request.headers['cookie'];
     if (cookieHeader == null || cookieHeader.isEmpty) {
@@ -406,5 +434,34 @@ class OAuthAPI implements Routing {
 
   Response _redirectWithError(String code) {
     return Response.found('/link?error=$code');
+  }
+
+  Response _redirectDocument({
+    required String location,
+    required String cookie,
+  }) {
+    String escapedLocation = htmlEscape.convert(location);
+    String scriptLocation = jsonEncode(location);
+    String body =
+        '<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=$escapedLocation"></head><body><script>window.location.replace($scriptLocation);</script><a href="$escapedLocation">Continue</a></body></html>';
+    return Response.ok(
+      body,
+      headers: <String, String>{
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'Set-Cookie': cookie,
+      },
+    );
+  }
+
+  String _linkLocation({required String linked, required String resumeToken}) {
+    String path = Uri(
+      path: '/link',
+      queryParameters: <String, String>{'linked': linked},
+    ).toString();
+    String fragment = Uri(
+      queryParameters: <String, String>{'resume': resumeToken},
+    ).query;
+    return '$path#$fragment';
   }
 }

@@ -51,37 +51,42 @@ class PublicLinkAPI implements Routing {
     }
 
     final String? token = _cookieValue(request, 'rac_session');
-    if (token == null || token.isEmpty) {
+    final SessionPayload? session = token == null || token.isEmpty
+        ? null
+        : await currentSecurity.verifySessionToken(token);
+    if (token != null && token.isNotEmpty && session == null) {
+      warn('public_link_status_session_invalid');
+    }
+
+    final String? resumeToken = _resumeToken(request);
+    final LinkResumePayload? resume =
+        session == null && resumeToken != null && resumeToken.isNotEmpty
+        ? await currentSecurity.verifyLinkResumeToken(resumeToken)
+        : null;
+
+    final String? accountLinkId =
+        session?.accountLinkId ?? resume?.accountLinkId;
+    if (accountLinkId == null || accountLinkId.isEmpty) {
       verbose('public_link_status_no_session');
       return _jsonResponse(_unauthenticated());
     }
 
-    final SessionPayload? session = await currentSecurity.verifySessionToken(
-      token,
-    );
-    if (session == null) {
-      warn('public_link_status_session_invalid');
-      return _jsonResponse(_unauthenticated());
-    }
-
-    final AccountLinkStatus status = await links.getStatus(
-      session.accountLinkId,
-    );
+    final AccountLinkStatus status = await links.getStatus(accountLinkId);
     final AccountLink? link = status.link;
     if (link == null) {
       warn(
-        'public_link_status_missing_account_link accountLinkId=${session.accountLinkId}',
+        'public_link_status_missing_account_link accountLinkId=$accountLinkId',
       );
       return _jsonResponse(_unauthenticated());
     }
 
-    final String? discordId = link.discordId ?? session.discordId;
+    final String? discordId = link.discordId ?? session?.discordId;
     final String? discordUsername =
-        link.discordUsername ?? session.discordUsername;
+        link.discordUsername ?? session?.discordUsername;
     final String? discordGlobalName =
-        link.discordGlobalName ?? session.discordGlobalName;
+        link.discordGlobalName ?? session?.discordGlobalName;
     final String? discordAvatarHash =
-        link.discordAvatarHash ?? session.discordAvatarHash;
+        link.discordAvatarHash ?? session?.discordAvatarHash;
 
     final List<Map<String, dynamic>> memberships = status.memberships
         .map(
@@ -107,6 +112,7 @@ class PublicLinkAPI implements Routing {
     final Map<String, dynamic> payload = <String, dynamic>{
       'featureEnabled': true,
       'authenticated': true,
+      'sessionAuthenticated': session != null,
       'discordConnected': discordConnected,
       'bungieConnected': bungieConnected,
       'discord': discordConnected
@@ -125,7 +131,7 @@ class PublicLinkAPI implements Routing {
       },
     };
     info(
-      'public_link_status_resolved accountLinkId=${session.accountLinkId} discordConnected=$discordConnected bungieConnected=$bungieConnected memberships=${memberships.length}',
+      'public_link_status_resolved accountLinkId=$accountLinkId discordConnected=$discordConnected bungieConnected=$bungieConnected memberships=${memberships.length} sessionAuthenticated=${session != null}',
     );
 
     return _jsonResponse(payload);
@@ -156,6 +162,20 @@ class PublicLinkAPI implements Routing {
     return null;
   }
 
+  String? _resumeToken(Request request) {
+    String? headerToken = request.headers['x-rac-link-resume'];
+    if (headerToken != null && headerToken.isNotEmpty) {
+      return headerToken;
+    }
+
+    String? queryToken = request.requestedUri.queryParameters['resume'];
+    if (queryToken != null && queryToken.isNotEmpty) {
+      return queryToken;
+    }
+
+    return null;
+  }
+
   String? _avatarUrl(String discordId, String? avatarHash) {
     if (avatarHash == null || avatarHash.isEmpty) {
       return null;
@@ -168,6 +188,7 @@ class PublicLinkAPI implements Routing {
     return <String, dynamic>{
       'featureEnabled': true,
       'authenticated': false,
+      'sessionAuthenticated': false,
       'discordConnected': false,
       'bungieConnected': false,
       'discord': null,

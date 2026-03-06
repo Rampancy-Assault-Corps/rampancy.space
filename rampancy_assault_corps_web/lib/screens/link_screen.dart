@@ -18,12 +18,17 @@ class LinkScreen extends StatefulComponent {
 }
 
 class _LinkScreenState extends State<LinkScreen> {
+  static const int _statusRetryLimit = 3;
+  static const String _resumeStorageKey = 'rac_link_resume';
+
   LinkStatus? _status;
   bool _loading = true;
   bool _logoutLoading = false;
   bool _deleteLoading = false;
   String? _error;
   String? _notice;
+  String? _recentlyLinkedProvider;
+  String? _resumeToken;
 
   @override
   void initState() {
@@ -34,6 +39,12 @@ class _LinkScreenState extends State<LinkScreen> {
 
   void _hydrateQueryState() {
     String query = web.window.location.search;
+    String hash = web.window.location.hash;
+    _resumeToken =
+        _extractResumeToken(query: query, hash: hash) ?? _storedResumeToken();
+    if (_resumeToken != null && _resumeToken!.isNotEmpty) {
+      _storeResumeToken(_resumeToken!);
+    }
     if (query.isEmpty) {
       return;
     }
@@ -51,30 +62,42 @@ class _LinkScreenState extends State<LinkScreen> {
     }
 
     if (deleted == 'account') {
+      _clearResumeToken();
       _notice = 'ACCOUNT DATA DELETED';
       _error = null;
       return;
     }
 
     if (linked == 'bungie') {
+      _recentlyLinkedProvider = 'bungie';
       _notice = 'BUNGIE CONNECTED. DISCORD IS NOW UNLOCKED.';
       _error = null;
       return;
     }
 
     if (linked == 'discord') {
+      _recentlyLinkedProvider = 'discord';
       _notice = 'DISCORD CONNECTED. ACCOUNT LINK COMPLETE.';
       _error = null;
     }
   }
 
-  Future<void> _loadStatus() async {
-    verbose('link_status_load_begin');
-    setState(() {
-      _loading = true;
-    });
+  Future<void> _loadStatus({int attempt = 0}) async {
+    verbose('link_status_load_begin attempt=$attempt');
+    bool optimisticLinked =
+        _hasOptimisticBungieLink || _hasOptimisticDiscordLink;
+    if (attempt == 0 && mounted) {
+      setState(() {
+        _loading = !optimisticLinked;
+      });
+    }
 
-    LinkStatus status = await LinkStatusService.fetchStatus();
+    LinkStatus status = await LinkStatusService.fetchStatus(
+      resumeToken: _resumeToken,
+    );
+    if (!mounted) {
+      return;
+    }
     setState(() {
       _status = status;
       _loading = false;
@@ -82,16 +105,34 @@ class _LinkScreenState extends State<LinkScreen> {
     info(
       'link_status_load_done authenticated=${status.authenticated} bungieConnected=${status.bungieConnected} discordConnected=${status.discordConnected}',
     );
+
+    if (_shouldRetryStatus(status, attempt)) {
+      int delayMs = 250 * (attempt + 1);
+      warn(
+        'link_status_load_retry_scheduled attempt=$attempt delayMs=$delayMs provider=$_recentlyLinkedProvider',
+      );
+      await Future<void>.delayed(Duration(milliseconds: delayMs));
+      if (!mounted) {
+        return;
+      }
+      await _loadStatus(attempt: attempt + 1);
+    }
   }
 
   void _connectBungie() {
-    String url = LinkStatusService.authUrl('/auth/bungie/start');
+    String url = LinkStatusService.authUrl(
+      '/auth/bungie/start',
+      resumeToken: _resumeToken,
+    );
     info('link_connect_bungie_pressed url=$url');
     web.window.location.href = url;
   }
 
   void _connectDiscord() {
-    String url = LinkStatusService.authUrl('/auth/discord/start');
+    String url = LinkStatusService.authUrl(
+      '/auth/discord/start',
+      resumeToken: _resumeToken,
+    );
     info('link_connect_discord_pressed url=$url');
     web.window.location.href = url;
   }
@@ -108,6 +149,7 @@ class _LinkScreenState extends State<LinkScreen> {
 
     try {
       await LinkStatusService.logout();
+      _clearResumeToken();
       await _loadStatus();
       setState(() {
         _notice = 'SESSION CLEARED';
@@ -138,6 +180,7 @@ class _LinkScreenState extends State<LinkScreen> {
 
     try {
       await LinkStatusService.deleteAccount();
+      _clearResumeToken();
       web.window.location.href = '${AppRoutes.link}?deleted=account';
     } catch (e) {
       error('link_delete_failed err=$e');
@@ -178,13 +221,18 @@ class _LinkScreenState extends State<LinkScreen> {
   @override
   Component build(BuildContext context) {
     LinkStatus status = _status ?? LinkStatus.fallback;
-    _LinkStage stage = _loading
+    bool bungieConnected = status.bungieConnected || _hasOptimisticBungieLink;
+    bool discordConnected =
+        status.discordConnected || _hasOptimisticDiscordLink;
+    bool showLoading = _loading && !bungieConnected && !discordConnected;
+
+    _LinkStage stage = showLoading
         ? _LinkStage.loading
         : !status.featureEnabled
         ? _LinkStage.unavailable
-        : !status.authenticated || !status.bungieConnected
+        : !bungieConnected
         ? _LinkStage.locked
-        : !status.discordConnected
+        : !discordConnected
         ? _LinkStage.bungieReady
         : _LinkStage.fullyLinked;
 
@@ -201,7 +249,7 @@ class _LinkScreenState extends State<LinkScreen> {
     }
 
     List<Component> utilityChildren = <Component>[];
-    if (status.authenticated) {
+    if (status.sessionAuthenticated) {
       utilityChildren.add(
         RacActionButton(
           label: _logoutLoading ? 'LOGGING OUT...' : 'LOG OUT',
@@ -228,22 +276,93 @@ class _LinkScreenState extends State<LinkScreen> {
       mainChild: _LinkStageSurface(
         stage: stage,
         status: status,
+        bungieConnected: bungieConnected,
+        discordConnected: discordConnected,
         onConnectBungie: _connectBungie,
         onConnectDiscord: _connectDiscord,
       ),
     );
+  }
+
+  bool get _hasOptimisticBungieLink =>
+      _recentlyLinkedProvider == 'bungie' ||
+      _recentlyLinkedProvider == 'discord';
+
+  bool get _hasOptimisticDiscordLink => _recentlyLinkedProvider == 'discord';
+
+  bool _shouldRetryStatus(LinkStatus status, int attempt) {
+    if (attempt >= _statusRetryLimit) {
+      return false;
+    }
+
+    if (_recentlyLinkedProvider == 'bungie') {
+      return !status.authenticated || !status.bungieConnected;
+    }
+
+    if (_recentlyLinkedProvider == 'discord') {
+      return !status.authenticated ||
+          !status.bungieConnected ||
+          !status.discordConnected;
+    }
+
+    return false;
+  }
+
+  String? _extractResumeToken({required String query, required String hash}) {
+    if (hash.isNotEmpty) {
+      Uri parsedHash = Uri.parse('https://rampancy.space/$hash');
+      String? hashToken = parsedHash.fragment.isNotEmpty
+          ? Uri.splitQueryString(parsedHash.fragment)['resume']
+          : null;
+      if (hashToken != null && hashToken.isNotEmpty) {
+        return hashToken;
+      }
+    }
+
+    if (query.isEmpty) {
+      return null;
+    }
+
+    Uri parsedQuery = Uri.parse('https://rampancy.space$query');
+    String? queryToken = parsedQuery.queryParameters['resume'];
+    if (queryToken != null && queryToken.isNotEmpty) {
+      return queryToken;
+    }
+
+    return null;
+  }
+
+  String? _storedResumeToken() {
+    String? token = web.window.sessionStorage.getItem(_resumeStorageKey);
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+    return token;
+  }
+
+  void _storeResumeToken(String token) {
+    web.window.sessionStorage.setItem(_resumeStorageKey, token);
+  }
+
+  void _clearResumeToken() {
+    _resumeToken = null;
+    web.window.sessionStorage.removeItem(_resumeStorageKey);
   }
 }
 
 class _LinkStageSurface extends StatelessComponent {
   final _LinkStage stage;
   final LinkStatus status;
+  final bool bungieConnected;
+  final bool discordConnected;
   final VoidCallback onConnectBungie;
   final VoidCallback onConnectDiscord;
 
   const _LinkStageSurface({
     required this.stage,
     required this.status,
+    required this.bungieConnected,
+    required this.discordConnected,
     required this.onConnectBungie,
     required this.onConnectDiscord,
   });
@@ -255,11 +374,13 @@ class _LinkStageSurface extends StatelessComponent {
         _BungiePanel(
           stage: stage,
           status: status,
+          bungieConnected: bungieConnected,
           onConnectBungie: onConnectBungie,
         ),
         _DiscordPanel(
           stage: stage,
           status: status,
+          discordConnected: discordConnected,
           onConnectDiscord: onConnectDiscord,
         ),
       ], classes: 'rac-panel-stack'),
@@ -270,11 +391,13 @@ class _LinkStageSurface extends StatelessComponent {
 class _BungiePanel extends StatelessComponent {
   final _LinkStage stage;
   final LinkStatus status;
+  final bool bungieConnected;
   final VoidCallback onConnectBungie;
 
   const _BungiePanel({
     required this.stage,
     required this.status,
+    required this.bungieConnected,
     required this.onConnectBungie,
   });
 
@@ -319,14 +442,14 @@ class _BungiePanel extends StatelessComponent {
 
     return _LinkRailPanel(
       railLabel: 'BUNGIE',
-      stateLabel: 'LINKED',
+      stateLabel: 'CONNECTED',
       child: _IdentityBlock(
-        badge: 'BUNGIE LINKED',
+        badge: 'BUNGIE CONNECTED',
         title: status.bungieDisplayName,
         detailLines: status.bungieMetaLines,
         avatarUrl: status.bungieAvatarUrl,
         action: RacActionButton(
-          label: 'RECONNECT BUNGIE',
+          label: bungieConnected ? 'REFRESH BUNGIE' : 'LOGIN WITH BUNGIE',
           onPressed: onConnectBungie,
           tone: RacActionTone.muted,
         ),
@@ -338,11 +461,13 @@ class _BungiePanel extends StatelessComponent {
 class _DiscordPanel extends StatelessComponent {
   final _LinkStage stage;
   final LinkStatus status;
+  final bool discordConnected;
   final VoidCallback onConnectDiscord;
 
   const _DiscordPanel({
     required this.stage,
     required this.status,
+    required this.discordConnected,
     required this.onConnectDiscord,
   });
 
@@ -379,10 +504,11 @@ class _DiscordPanel extends StatelessComponent {
     if (stage == _LinkStage.bungieReady) {
       return _LinkRailPanel(
         railLabel: 'DISCORD',
-        stateLabel: 'READY',
+        stateLabel: 'UNLOCKED',
         child: _CenteredCopyBlock(
-          title: 'LOGIN WITH DISCORD',
-          detail: 'COMPLETE THE SECOND STEP TO FINISH ACCOUNT LINKING.',
+          title: 'CONNECT DISCORD',
+          detail:
+              'YOUR BUNGIE PROFILE IS STORED. COMPLETE THE SECOND STEP TO FINISH ACCOUNT LINKING.',
           action: RacActionButton(
             label: 'LOGIN WITH DISCORD',
             onPressed: onConnectDiscord,
@@ -393,14 +519,14 @@ class _DiscordPanel extends StatelessComponent {
 
     return _LinkRailPanel(
       railLabel: 'DISCORD',
-      stateLabel: 'LINKED',
+      stateLabel: 'CONNECTED',
       child: _IdentityBlock(
-        badge: 'DISCORD LINKED',
+        badge: 'DISCORD CONNECTED',
         title: status.discordDisplayName,
         detailLines: status.discordMetaLines,
         avatarUrl: status.discordAvatarUrl,
         action: RacActionButton(
-          label: 'RECONNECT DISCORD',
+          label: discordConnected ? 'REFRESH DISCORD' : 'LOGIN WITH DISCORD',
           onPressed: onConnectDiscord,
           tone: RacActionTone.muted,
         ),
@@ -532,7 +658,7 @@ extension _LinkStatusPresentation on LinkStatus {
       return membershipId;
     }
 
-    return 'GUARDIAN';
+    return 'BUNGIE ACCOUNT';
   }
 
   String? get bungieAvatarUrl {
@@ -564,7 +690,7 @@ extension _LinkStatusPresentation on LinkStatus {
       lines.add('${memberships.length} MEMBERSHIP$suffix STORED');
     }
     if (lines.isEmpty) {
-      lines.add('BUNGIE PROFILE READY');
+      lines.add('BUNGIE ACCOUNT READY');
     }
     return lines;
   }

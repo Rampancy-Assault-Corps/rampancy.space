@@ -14,7 +14,8 @@ class AppConstants {
       'Trademarks belong to their respective owners. We are not affiliated with or endorsed by any games or platforms unless explicitly stated.';
 
   /// GitHub repository URL (leave empty to hide GitHub link)
-  static const String githubUrl = '';
+  static const String githubUrl =
+      'https://github.com/orgs/Rampancy-Assault-Corps/repositories';
 }
 
 /// Route constants for the application

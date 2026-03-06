@@ -72,6 +72,7 @@ class LinkStatusMembership {
 class LinkStatus {
   final bool featureEnabled;
   final bool authenticated;
+  final bool sessionAuthenticated;
   final bool discordConnected;
   final bool bungieConnected;
   final String? bungiePrimaryMembershipId;
@@ -82,6 +83,7 @@ class LinkStatus {
   const LinkStatus({
     required this.featureEnabled,
     required this.authenticated,
+    required this.sessionAuthenticated,
     required this.discordConnected,
     required this.bungieConnected,
     required this.bungiePrimaryMembershipId,
@@ -93,6 +95,7 @@ class LinkStatus {
   static const LinkStatus fallback = LinkStatus(
     featureEnabled: true,
     authenticated: false,
+    sessionAuthenticated: false,
     discordConnected: false,
     bungieConnected: false,
     bungiePrimaryMembershipId: null,
@@ -131,6 +134,7 @@ class LinkStatus {
     return LinkStatus(
       featureEnabled: (map['featureEnabled'] as bool?) ?? true,
       authenticated: (map['authenticated'] as bool?) ?? false,
+      sessionAuthenticated: (map['sessionAuthenticated'] as bool?) ?? false,
       discordConnected: (map['discordConnected'] as bool?) ?? false,
       bungieConnected: (map['bungieConnected'] as bool?) ?? false,
       bungiePrimaryMembershipId: bungiePrimaryMembershipId,
@@ -142,15 +146,16 @@ class LinkStatus {
 }
 
 class LinkStatusService {
-  static String authUrl(String path) => _resolveUri(path).toString();
+  static String authUrl(String path, {String? resumeToken}) =>
+      _resolveUri(_pathWithResume(path, resumeToken)).toString();
 
-  static Future<LinkStatus> fetchStatus() async {
+  static Future<LinkStatus> fetchStatus({String? resumeToken}) async {
     try {
       Uri uri = _resolveUri('/api/public/link/status');
       network('link_status_fetch_begin uri=$uri');
       http.Response response = await http.get(
         uri,
-        headers: <String, String>{'Accept': 'application/json'},
+        headers: _headers(resumeToken),
       );
       network('link_status_fetch_response status=${response.statusCode}');
 
@@ -223,6 +228,29 @@ class LinkStatusService {
       return Uri.parse(path);
     }
     return Uri.parse('$baseUrl$path');
+  }
+
+  static Map<String, String> _headers(String? resumeToken) {
+    Map<String, String> headers = <String, String>{
+      'Accept': 'application/json',
+    };
+    if (resumeToken != null && resumeToken.isNotEmpty) {
+      headers['x-rac-link-resume'] = resumeToken;
+    }
+    return headers;
+  }
+
+  static String _pathWithResume(String path, String? resumeToken) {
+    if (resumeToken == null || resumeToken.isEmpty) {
+      return path;
+    }
+
+    Uri uri = Uri.parse(path);
+    Map<String, String> nextQuery = <String, String>{
+      ...uri.queryParameters,
+      'resume': resumeToken,
+    };
+    return uri.replace(queryParameters: nextQuery).toString();
   }
 
   static String _serverBaseUrl() {

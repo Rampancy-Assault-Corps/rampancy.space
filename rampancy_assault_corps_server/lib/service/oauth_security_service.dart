@@ -123,6 +123,42 @@ class OAuthStatePayload {
   }
 }
 
+class LinkResumePayload {
+  final String accountLinkId;
+  final int issuedAt;
+  final int expiresAt;
+
+  const LinkResumePayload({
+    required this.accountLinkId,
+    required this.issuedAt,
+    required this.expiresAt,
+  });
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+    'accountLinkId': accountLinkId,
+    'issuedAt': issuedAt,
+    'expiresAt': expiresAt,
+  };
+
+  factory LinkResumePayload.fromMap(Map<String, dynamic> map) {
+    String? accountLinkId = map['accountLinkId'] as String?;
+    int? issuedAt = SessionPayload._asInt(map['issuedAt']);
+    int? expiresAt = SessionPayload._asInt(map['expiresAt']);
+    if (accountLinkId == null ||
+        accountLinkId.isEmpty ||
+        issuedAt == null ||
+        expiresAt == null) {
+      throw StateError('Invalid link resume payload.');
+    }
+
+    return LinkResumePayload(
+      accountLinkId: accountLinkId,
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
+    );
+  }
+}
+
 class EncryptedToken {
   final String ciphertext;
   final String nonce;
@@ -228,6 +264,37 @@ class OAuthSecurityService {
     if (payload.provider != provider) {
       return null;
     }
+    if (payload.expiresAt < now) {
+      return null;
+    }
+
+    return payload;
+  }
+
+  Future<String> createLinkResumeToken({required String accountLinkId}) async {
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    final int expiresAt = now + (_sessionMaxAgeSeconds * 1000);
+    final LinkResumePayload payload = LinkResumePayload(
+      accountLinkId: accountLinkId,
+      issuedAt: now,
+      expiresAt: expiresAt,
+    );
+    return _sign(payload.toMap(), _stateKey);
+  }
+
+  Future<LinkResumePayload?> verifyLinkResumeToken(String token) async {
+    final Map<String, dynamic>? map = await _verify(token, _stateKey);
+    if (map == null) {
+      return null;
+    }
+
+    LinkResumePayload payload;
+    try {
+      payload = LinkResumePayload.fromMap(map);
+    } catch (_) {
+      return null;
+    }
+    final int now = DateTime.now().millisecondsSinceEpoch;
     if (payload.expiresAt < now) {
       return null;
     }

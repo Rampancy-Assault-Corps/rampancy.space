@@ -77,8 +77,7 @@ html {
 
 body {
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, var(--rac-red) 0%, var(--rac-red) 24%, var(--rac-red-deep) 100%);
+  background: var(--rac-red);
   color: var(--rac-text);
   font-family: var(--rac-font-display);
   letter-spacing: 0.045em;
@@ -136,7 +135,7 @@ select {
 }
 
 .rac-header {
-  justify-content: flex-start;
+  justify-content: space-between;
 }
 
 .rac-header__brand {
@@ -151,6 +150,7 @@ select {
   height: auto;
   display: block;
   flex: 0 0 auto;
+  filter: brightness(0) invert(1);
 }
 
 .rac-header__meta {
@@ -159,8 +159,8 @@ select {
 }
 
 .rac-header__version,
-.rac-header__status-label,
-.rac-header__status-value,
+.rac-header__github-label,
+.rac-header__github-value,
 .rac-panel__state,
 .rac-identity__badge,
 .rac-identity__detail,
@@ -176,42 +176,36 @@ select {
   line-height: 1.06;
 }
 
-.rac-header__status {
+.rac-header__github {
   display: flex;
   align-items: center;
   gap: 14px;
+  color: inherit;
+}
+
+.rac-header__github:hover {
+  opacity: 0.86;
+}
+
+.rac-header__github-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 2px solid rgba(255, 194, 194, 0.72);
+  border-radius: 10px 10px 16px 16px;
   color: rgba(255, 194, 194, 0.72);
 }
 
-.rac-header__status-orb {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border: 2px solid currentColor;
-  border-radius: 10px 10px 16px 16px;
-  opacity: 0.8;
+.rac-header__github-icon-image {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
 }
 
-.rac-header__status-orb::before,
-.rac-header__status-orb::after {
-  content: "";
-  position: absolute;
-  top: 11px;
-  width: 4px;
-  height: 4px;
-  background: currentColor;
-  border-radius: 999px;
-}
-
-.rac-header__status-orb::before {
-  left: 9px;
-}
-
-.rac-header__status-orb::after {
-  right: 9px;
-}
-
-.rac-header__status-copy {
+.rac-header__github-copy {
   display: grid;
   justify-items: end;
   gap: 3px;
@@ -222,7 +216,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 0 8px 16px;
+  padding: 0 0 16px;
   min-height: 0;
 }
 
@@ -319,16 +313,14 @@ select {
   overflow: hidden;
   padding: 40px 40px 40px 72px;
   border: 2px solid var(--rac-blue-edge);
-  background:
-    linear-gradient(180deg, var(--rac-blue) 0%, var(--rac-blue-deep) 100%);
+  background: var(--rac-blue);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.03),
     0 18px 40px rgba(3, 10, 28, 0.18);
 }
 
 .rac-panel--disabled {
-  background:
-    linear-gradient(180deg, var(--rac-grey) 0%, #434b57 100%);
+  background: var(--rac-grey);
   border-color: var(--rac-grey-edge);
   color: rgba(244, 247, 251, 0.62);
 }
@@ -419,8 +411,7 @@ select {
 }
 
 .rac-identity__avatar--blank {
-  background:
-    linear-gradient(135deg, rgba(16, 32, 92, 0.96) 0%, rgba(5, 18, 55, 0.92) 100%);
+  background: var(--rac-blue-edge);
 }
 
 .rac-identity__badge {
@@ -577,8 +568,8 @@ a:hover {
     align-items: stretch;
   }
 
-  .rac-header__status,
-  .rac-header__status-copy,
+  .rac-header__github,
+  .rac-header__github-copy,
   .rac-footer__legal {
     justify-items: start;
     text-align: left;
@@ -618,7 +609,7 @@ a:hover {
   }
 
   .rac-body {
-    padding: 0 4px 12px;
+    padding: 0 0 12px;
   }
 
   .rac-main {
