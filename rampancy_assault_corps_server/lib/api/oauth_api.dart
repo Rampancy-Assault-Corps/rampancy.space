@@ -11,8 +11,8 @@ import 'package:shelf_router/shelf_router.dart';
 
 class OAuthAPI implements Routing {
   final AccountLinkingConfig config;
-  final OAuthProviderService provider;
-  final OAuthSecurityService security;
+  final OAuthProviderService? provider;
+  final OAuthSecurityService? security;
   final AccountLinkService links;
 
   OAuthAPI({
@@ -36,7 +36,13 @@ class OAuthAPI implements Routing {
 
   Future<Response> _discordStart(Request request) async {
     if (!config.enabled) {
-      return Response.notFound('Not Found');
+      return _redirectWithError('discord_not_configured');
+    }
+
+    final OAuthSecurityService? currentSecurity = security;
+    final OAuthProviderService? currentProvider = provider;
+    if (currentSecurity == null || currentProvider == null) {
+      return _redirectWithError('discord_not_configured');
     }
 
     info('oauth_discord_start path=${request.requestedUri.path}');
@@ -55,18 +61,24 @@ class OAuthAPI implements Routing {
       return _redirectWithError('discord_requires_bungie');
     }
 
-    final String state = await security.createOAuthState(
+    final String state = await currentSecurity.createOAuthState(
       provider: 'discord',
       accountLinkId: session.accountLinkId,
     );
-    final Uri uri = provider.buildDiscordAuthorizeUri(state: state);
+    final Uri uri = currentProvider.buildDiscordAuthorizeUri(state: state);
     network('oauth_discord_start_redirect host=${uri.host} path=${uri.path}');
     return Response.found(uri.toString());
   }
 
   Future<Response> _discordCallback(Request request) async {
     if (!config.enabled) {
-      return Response.notFound('Not Found');
+      return _redirectWithError('discord_not_configured');
+    }
+
+    final OAuthSecurityService? currentSecurity = security;
+    final OAuthProviderService? currentProvider = provider;
+    if (currentSecurity == null || currentProvider == null) {
+      return _redirectWithError('discord_not_configured');
     }
 
     final String? code = request.param('code');
@@ -91,10 +103,8 @@ class OAuthAPI implements Routing {
       return _redirectWithError('discord_callback_invalid');
     }
 
-    final OAuthStatePayload? decodedState = await security.verifyOAuthState(
-      token: state,
-      provider: 'discord',
-    );
+    final OAuthStatePayload? decodedState = await currentSecurity
+        .verifyOAuthState(token: state, provider: 'discord');
 
     if (decodedState == null) {
       warn('oauth_discord_callback_state_invalid');
@@ -119,14 +129,14 @@ class OAuthAPI implements Routing {
     }
 
     try {
-      final DiscordProfile profile = await provider
+      final DiscordProfile profile = await currentProvider
           .exchangeDiscordCodeForProfile(code: code);
       AccountLinkRecord link = await links.upsertDiscordLink(
         profile: profile,
         accountLinkId: accountLinkId,
       );
 
-      final String session = await security.createSessionToken(
+      final String session = await currentSecurity.createSessionToken(
         accountLinkId: link.accountLinkId,
         discordId: link.link.discordId,
         discordUsername: link.link.discordUsername,
@@ -137,10 +147,10 @@ class OAuthAPI implements Routing {
       final String cookie = _sessionCookie(
         session,
         request,
-        security.sessionMaxAgeSeconds,
+        currentSecurity.sessionMaxAgeSeconds,
       );
       verbose(
-        'oauth_discord_callback_cookie_issued maxAge=${security.sessionMaxAgeSeconds}',
+        'oauth_discord_callback_cookie_issued maxAge=${currentSecurity.sessionMaxAgeSeconds}',
       );
 
       info('discord_link_success accountLinkId=${link.accountLinkId}');
@@ -156,24 +166,36 @@ class OAuthAPI implements Routing {
 
   Future<Response> _bungieStart(Request request) async {
     if (!config.enabled) {
-      return Response.notFound('Not Found');
+      return _redirectWithError('bungie_not_configured');
+    }
+
+    final OAuthSecurityService? currentSecurity = security;
+    final OAuthProviderService? currentProvider = provider;
+    if (currentSecurity == null || currentProvider == null) {
+      return _redirectWithError('bungie_not_configured');
     }
 
     info('oauth_bungie_start path=${request.requestedUri.path}');
     final SessionPayload? session = await _getSession(request);
     verbose('oauth_bungie_start hasSession=${session != null}');
-    final String state = await security.createOAuthState(
+    final String state = await currentSecurity.createOAuthState(
       provider: 'bungie',
       accountLinkId: session?.accountLinkId,
     );
-    final Uri uri = provider.buildBungieAuthorizeUri(state: state);
+    final Uri uri = currentProvider.buildBungieAuthorizeUri(state: state);
     network('oauth_bungie_start_redirect host=${uri.host} path=${uri.path}');
     return Response.found(uri.toString());
   }
 
   Future<Response> _bungieCallback(Request request) async {
     if (!config.enabled) {
-      return Response.notFound('Not Found');
+      return _redirectWithError('bungie_not_configured');
+    }
+
+    final OAuthSecurityService? currentSecurity = security;
+    final OAuthProviderService? currentProvider = provider;
+    if (currentSecurity == null || currentProvider == null) {
+      return _redirectWithError('bungie_not_configured');
     }
 
     final String? code = request.param('code');
@@ -198,10 +220,8 @@ class OAuthAPI implements Routing {
       return _redirectWithError('bungie_callback_invalid');
     }
 
-    final OAuthStatePayload? decodedState = await security.verifyOAuthState(
-      token: state,
-      provider: 'bungie',
-    );
+    final OAuthStatePayload? decodedState = await currentSecurity
+        .verifyOAuthState(token: state, provider: 'bungie');
 
     if (decodedState == null) {
       warn('oauth_bungie_callback_state_invalid');
@@ -225,10 +245,10 @@ class OAuthAPI implements Routing {
         decodedState.accountLinkId ?? session?.accountLinkId;
 
     try {
-      final BungieOAuthResult result = await provider.exchangeBungieCode(
+      final BungieOAuthResult result = await currentProvider.exchangeBungieCode(
         code: code,
       );
-      final EncryptedToken encrypted = await security.encryptToken(
+      final EncryptedToken encrypted = await currentSecurity.encryptToken(
         result.refreshToken,
       );
 
@@ -239,7 +259,7 @@ class OAuthAPI implements Routing {
         memberships: result.memberships,
       );
 
-      String newSession = await security.createSessionToken(
+      String newSession = await currentSecurity.createSessionToken(
         accountLinkId: link.accountLinkId,
         discordId: link.link.discordId,
         discordUsername: link.link.discordUsername,
@@ -249,10 +269,10 @@ class OAuthAPI implements Routing {
       String cookie = _sessionCookie(
         newSession,
         request,
-        security.sessionMaxAgeSeconds,
+        currentSecurity.sessionMaxAgeSeconds,
       );
       verbose(
-        'oauth_bungie_callback_cookie_issued maxAge=${security.sessionMaxAgeSeconds}',
+        'oauth_bungie_callback_cookie_issued maxAge=${currentSecurity.sessionMaxAgeSeconds}',
       );
 
       info('bungie_link_success accountLinkId=${link.accountLinkId}');
@@ -330,13 +350,19 @@ class OAuthAPI implements Routing {
   }
 
   Future<SessionPayload?> _getSession(Request request) async {
+    final OAuthSecurityService? currentSecurity = security;
+    if (currentSecurity == null) {
+      verbose('oauth_session_security_unavailable');
+      return null;
+    }
+
     final String? token = _cookieValue(request, 'rac_session');
     if (token == null || token.isEmpty) {
       verbose('oauth_session_missing_cookie');
       return null;
     }
 
-    SessionPayload? session = await security.verifySessionToken(token);
+    SessionPayload? session = await currentSecurity.verifySessionToken(token);
     verbose('oauth_session_verified=${session != null}');
     return session;
   }

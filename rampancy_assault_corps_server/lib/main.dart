@@ -34,8 +34,8 @@ class RampancyAssaultCorpsServer implements Routing {
   static late CommandService svcCommand;
   static late MediaService svcMedia;
   static late AccountLinkService svcAccountLink;
-  static late OAuthProviderService svcOAuthProvider;
-  static late OAuthSecurityService svcOAuthSecurity;
+  static OAuthProviderService? svcOAuthProvider;
+  static OAuthSecurityService? svcOAuthSecurity;
 
   // APIs
   static late UserAPI apiUser;
@@ -90,14 +90,14 @@ class RampancyAssaultCorpsServer implements Routing {
     apiUser = UserAPI();
     apiSettings = SettingsAPI();
     apiCommand = CommandAPI();
-    OAuthSecurityService? publicLinkSecurity;
+    OAuthSecurityService? publicLinkSecurity = svcOAuthSecurity;
+    apiOAuth = OAuthAPI(
+      config: config,
+      provider: svcOAuthProvider,
+      security: svcOAuthSecurity,
+      links: svcAccountLink,
+    );
     if (config.enabled) {
-      apiOAuth = OAuthAPI(
-        config: config,
-        provider: svcOAuthProvider,
-        security: svcOAuthSecurity,
-        links: svcAccountLink,
-      );
       publicLinkSecurity = svcOAuthSecurity;
     }
     apiPublicLink = PublicLinkAPI(
@@ -146,9 +146,7 @@ class RampancyAssaultCorpsServer implements Routing {
   @override
   Router get router {
     final Router r = Router();
-    if (config.enabled) {
-      r.mount(apiOAuth.prefix, apiOAuth.router.call);
-    }
+    r.mount(apiOAuth.prefix, apiOAuth.router.call);
     r.mount(apiPublicLink.prefix, apiPublicLink.router.call);
     r.mount(apiUser.prefix, apiUser.router.call);
     r.mount(apiSettings.prefix, apiSettings.router.call);
@@ -173,14 +171,16 @@ extension XRequest on Request {
   String? param(String key) => url.queryParameters[key];
 }
 
-void main() =>
-    runZonedGuarded(() async {
-      print('[startup] main_enter');
-      await RampancyAssaultCorpsServer().start();
-    }, (Object errorValue, StackTrace stackTrace) {
-      print('[startup] unhandled_error err=$errorValue');
-      print('[startup] unhandled_error_stack $stackTrace');
-      error('server_startup_unhandled err=$errorValue');
-      error('server_startup_unhandled_stack stack=$stackTrace');
-      exitCode = 1;
-    });
+void main() => runZonedGuarded(
+  () async {
+    print('[startup] main_enter');
+    await RampancyAssaultCorpsServer().start();
+  },
+  (Object errorValue, StackTrace stackTrace) {
+    print('[startup] unhandled_error err=$errorValue');
+    print('[startup] unhandled_error_stack $stackTrace');
+    error('server_startup_unhandled err=$errorValue');
+    error('server_startup_unhandled_stack stack=$stackTrace');
+    exitCode = 1;
+  },
+);

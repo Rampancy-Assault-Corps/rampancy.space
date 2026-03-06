@@ -1,11 +1,45 @@
+substitutions:
+  _SERVICE_NAME: rampancy-assault-corps-server
+  _FLUTTER_VERSION: 3.41.2
+
 steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-lc'
+      - 'docker pull gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION} || true'
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-lc'
+      - 'docker pull gcr.io/$PROJECT_ID/${_SERVICE_NAME} || true'
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'build'
+      - '--build-arg'
+      - 'FLUTTER_VERSION=${_FLUTTER_VERSION}'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION}'
       - '-t'
-      - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server'
+      - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION}'
+      - '-f'
+      - 'rampancy_assault_corps_server/Dockerfile.flutter-base'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--build-arg'
+      - 'FLUTTER_BASE_IMAGE=gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION}'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION}'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
       - '-f'
       - 'rampancy_assault_corps_server/Dockerfile'
       - '.'
+
 images:
-  - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server'
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}'
+  - 'gcr.io/$PROJECT_ID/rampancy-assault-corps-server-flutter-base:${_FLUTTER_VERSION}'

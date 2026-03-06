@@ -55,7 +55,7 @@ class _Content extends StatelessComponent {
                   children: const [
                     ArcaneText.heading('About'),
                     ArcaneText.body(
-                      '${AppConstants.appName} is a modern web application template built with Jaspr - the Dart web framework.',
+                      '${AppConstants.appName} is the account-linking portal for Rampancy services.',
                     ),
                   ],
                 ),
@@ -69,9 +69,9 @@ class _Content extends StatelessComponent {
                   ),
                   children: [
                     ArcaneText(
-                      'This template includes the Arcane design system for beautiful, '
-                      'consistent UI components, along with routing, logging, and '
-                      'a ready-to-use project structure.',
+                      'Use this site to connect your Bungie account first, unlock '
+                      'Discord second, and manage the linked record tied to your '
+                      'Rampancy profile.',
                     ),
                   ],
                 ),
@@ -79,7 +79,7 @@ class _Content extends StatelessComponent {
                 // Getting Started section
                 ArcaneDiv(
                   styles: const ArcaneStyleData(margin: MarginPreset.topXl),
-                  children: [const ArcaneText.heading2('Getting Started')],
+                  children: [const ArcaneText.heading2('Connection Flow')],
                 ),
 
                 // Getting started checklist using ArcaneCheckList
@@ -92,15 +92,16 @@ class _Content extends StatelessComponent {
                         style: const ArcaneStyleData(gap: Gap.sm),
                         children: const [
                           _ChecklistItem(
+                            text: 'Enter through the home screen.',
+                          ),
+                          _ChecklistItem(text: 'Open the connection screen.'),
+                          _ChecklistItem(
                             text:
-                                'Run jaspr serve to start the development server',
-                          ),
-                          _ChecklistItem(text: 'Edit screens in lib/screens/'),
-                          _ChecklistItem(
-                            text: 'Add routes in lib/routes/app_router.dart',
+                                'Link Bungie first to initialize your account record.',
                           ),
                           _ChecklistItem(
-                            text: 'Build for production with jaspr build',
+                            text:
+                                'Link Discord after Bungie unlocks the second step.',
                           ),
                         ],
                       ),
@@ -111,7 +112,7 @@ class _Content extends StatelessComponent {
                 // Tech stack section
                 ArcaneDiv(
                   styles: const ArcaneStyleData(margin: MarginPreset.topXl),
-                  children: [const ArcaneText.heading2('Tech Stack')],
+                  children: [const ArcaneText.heading2('Linked Services')],
                 ),
 
                 // Tech stack badges
@@ -121,9 +122,9 @@ class _Content extends StatelessComponent {
                     flexWrap: FlexWrap.wrap,
                   ),
                   children: [
-                    const ArcaneStatusBadge.info('Dart'),
-                    const ArcaneStatusBadge.success('Jaspr'),
-                    const ArcaneStatusBadge.info('Arcane UI'),
+                    const ArcaneStatusBadge.info('Bungie'),
+                    const ArcaneStatusBadge.success('Discord'),
+                    const ArcaneStatusBadge.info('Firebase'),
                   ],
                 ),
               ],

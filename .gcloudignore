@@ -1,0 +1,16 @@
+**
+!cloudbuild.yaml
+!.gcloudignore
+!rampancy_assault_corps_models/
+!rampancy_assault_corps_models/pubspec.yaml
+!rampancy_assault_corps_models/pubspec.lock
+!rampancy_assault_corps_models/lib/
+!rampancy_assault_corps_models/lib/**
+!rampancy_assault_corps_server/
+!rampancy_assault_corps_server/Dockerfile
+!rampancy_assault_corps_server/Dockerfile.flutter-base
+!rampancy_assault_corps_server/pubspec.yaml
+!rampancy_assault_corps_server/pubspec.lock
+!rampancy_assault_corps_server/lib/
+!rampancy_assault_corps_server/lib/**
+**/.DS_Store
