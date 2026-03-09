@@ -30,65 +30,66 @@ class PublicLinkAPI implements Routing {
     verbose('public_link_status_request path=${request.requestedUri.path}');
     if (!config.enabled) {
       warn('public_link_status_disabled');
-      return _jsonResponse(<String, dynamic>{
-        'featureEnabled': false,
-        'authenticated': false,
-        'discordConnected': false,
-        'bungieConnected': false,
-        'discord': null,
-        'bungie': <String, dynamic>{
-          'primaryMembershipId': null,
-          'primaryMembershipType': null,
-          'membershipCount': 0,
-          'memberships': <dynamic>[],
-        },
-      });
+      return _jsonResponse(_unauthenticated(featureEnabled: false));
     }
 
-    final OAuthSecurityService? currentSecurity = security;
+    OAuthSecurityService? currentSecurity = security;
     if (currentSecurity == null) {
       return Response.internalServerError();
     }
 
-    final String? token = _cookieValue(request, 'rac_session');
-    final SessionPayload? session = token == null || token.isEmpty
+    String? token = _cookieValue(request, 'rac_session');
+    SessionPayload? session = token == null || token.isEmpty
         ? null
         : await currentSecurity.verifySessionToken(token);
     if (token != null && token.isNotEmpty && session == null) {
       warn('public_link_status_session_invalid');
     }
 
-    final String? resumeToken = _resumeToken(request);
-    final LinkResumePayload? resume =
+    String? resumeToken = _resumeToken(request);
+    LinkResumePayload? resume =
         session == null && resumeToken != null && resumeToken.isNotEmpty
         ? await currentSecurity.verifyLinkResumeToken(resumeToken)
         : null;
 
-    final String? accountLinkId =
+    String? requestedAccountLinkId =
         session?.accountLinkId ?? resume?.accountLinkId;
-    if (accountLinkId == null || accountLinkId.isEmpty) {
+    AccountLinkIdResolution? resolution = await links.resolveAccountLinkId(
+      requestedAccountLinkId,
+    );
+    String? canonicalAccountLinkId = resolution?.canonicalAccountLinkId;
+    if (canonicalAccountLinkId == null || canonicalAccountLinkId.isEmpty) {
       verbose('public_link_status_no_session');
       return _jsonResponse(_unauthenticated());
     }
 
-    final AccountLinkStatus status = await links.getStatus(accountLinkId);
-    final AccountLink? link = status.link;
+    AccountLinkStatus status = await links.getStatus(canonicalAccountLinkId);
+    AccountLink? link = status.link;
     if (link == null) {
       warn(
-        'public_link_status_missing_account_link accountLinkId=$accountLinkId',
+        'public_link_status_missing_account_link accountLinkId=$canonicalAccountLinkId',
       );
       return _jsonResponse(_unauthenticated());
     }
 
-    final String? discordId = link.discordId ?? session?.discordId;
-    final String? discordUsername =
-        link.discordUsername ?? session?.discordUsername;
-    final String? discordGlobalName =
+    String nextResumeToken = await currentSecurity.createLinkResumeToken(
+      accountLinkId: canonicalAccountLinkId,
+    );
+    String? cookie = await _maybeRefreshSessionCookie(
+      request: request,
+      security: currentSecurity,
+      session: session,
+      resolution: resolution,
+      link: link,
+    );
+    String? discordId = link.discordId ?? session?.discordId;
+    String? discordUsername = link.discordUsername ?? session?.discordUsername;
+    String? discordGlobalName =
         link.discordGlobalName ?? session?.discordGlobalName;
-    final String? discordAvatarHash =
+    String? discordAvatarHash =
         link.discordAvatarHash ?? session?.discordAvatarHash;
 
-    final List<Map<String, dynamic>> memberships = status.memberships
+    List<Map<String, dynamic>> memberships = status.memberships
         .map(
           (BungieMembership membership) => <String, dynamic>{
             'membershipId': membership.membershipId,
@@ -101,18 +102,19 @@ class PublicLinkAPI implements Routing {
         )
         .toList();
 
-    final bool discordConnected =
+    bool discordConnected =
         discordId != null &&
         discordId.isNotEmpty &&
         discordUsername != null &&
         discordUsername.isNotEmpty;
+    bool bungieConnected = link.bungieConnected;
 
-    final bool bungieConnected = link.bungieConnected;
-
-    final Map<String, dynamic> payload = <String, dynamic>{
+    Map<String, dynamic> payload = <String, dynamic>{
       'featureEnabled': true,
       'authenticated': true,
       'sessionAuthenticated': session != null,
+      'accountLinkId': canonicalAccountLinkId,
+      'resumeToken': nextResumeToken,
       'discordConnected': discordConnected,
       'bungieConnected': bungieConnected,
       'discord': discordConnected
@@ -120,38 +122,40 @@ class PublicLinkAPI implements Routing {
               'id': discordId,
               'username': discordUsername,
               'globalName': discordGlobalName,
-              'avatarUrl': _avatarUrl(discordId, discordAvatarHash),
+              'avatarUrl': _discordAvatarUrl(discordId, discordAvatarHash),
             }
           : null,
       'bungie': <String, dynamic>{
-        'primaryMembershipId': link.bungiePrimaryMembershipId,
-        'primaryMembershipType': link.bungiePrimaryMembershipType,
+        'accountId': link.bungieAccountId,
+        'displayName': link.bungieDisplayName,
+        'avatarUrl': _bungieAvatarUrl(link.bungieAvatarPath),
+        'marathonMembershipId': link.bungieMarathonMembershipId,
         'membershipCount': memberships.length,
         'memberships': memberships,
       },
     };
     info(
-      'public_link_status_resolved accountLinkId=$accountLinkId discordConnected=$discordConnected bungieConnected=$bungieConnected memberships=${memberships.length} sessionAuthenticated=${session != null}',
+      'public_link_status_resolved requestedAccountLinkId=$requestedAccountLinkId canonicalAccountLinkId=$canonicalAccountLinkId discordConnected=$discordConnected bungieConnected=$bungieConnected memberships=${memberships.length} sessionAuthenticated=${session != null}',
     );
 
-    return _jsonResponse(payload);
+    return _jsonResponse(payload, cookie: cookie);
   }
 
   String? _cookieValue(Request request, String key) {
-    final String? cookieHeader = request.headers['cookie'];
+    String? cookieHeader = request.headers['cookie'];
     if (cookieHeader == null || cookieHeader.isEmpty) {
       return null;
     }
 
-    final List<String> segments = cookieHeader.split(';');
-    for (final String rawSegment in segments) {
-      final String segment = rawSegment.trim();
-      final int idx = segment.indexOf('=');
+    List<String> segments = cookieHeader.split(';');
+    for (String rawSegment in segments) {
+      String segment = rawSegment.trim();
+      int idx = segment.indexOf('=');
       if (idx <= 0) {
         continue;
       }
 
-      final String name = segment.substring(0, idx).trim();
+      String name = segment.substring(0, idx).trim();
       if (name != key) {
         continue;
       }
@@ -176,7 +180,36 @@ class PublicLinkAPI implements Routing {
     return null;
   }
 
-  String? _avatarUrl(String discordId, String? avatarHash) {
+  Future<String?> _maybeRefreshSessionCookie({
+    required Request request,
+    required OAuthSecurityService security,
+    required SessionPayload? session,
+    required AccountLinkIdResolution? resolution,
+    required AccountLink link,
+  }) async {
+    if (session == null || resolution == null || !resolution.aliased) {
+      return null;
+    }
+
+    bool secure = request.requestedUri.scheme == 'https';
+    String securePart = secure ? '; Secure' : '';
+    String? discordId = link.discordId ?? session.discordId;
+    String? discordUsername = link.discordUsername ?? session.discordUsername;
+    String? discordGlobalName =
+        link.discordGlobalName ?? session.discordGlobalName;
+    String? discordAvatarHash =
+        link.discordAvatarHash ?? session.discordAvatarHash;
+    String token = await security.createSessionToken(
+      accountLinkId: resolution.canonicalAccountLinkId,
+      discordId: discordId,
+      discordUsername: discordUsername,
+      discordGlobalName: discordGlobalName,
+      discordAvatarHash: discordAvatarHash,
+    );
+    return 'rac_session=$token; Path=/; HttpOnly; SameSite=Lax; Max-Age=${security.sessionMaxAgeSeconds}$securePart';
+  }
+
+  String? _discordAvatarUrl(String discordId, String? avatarHash) {
     if (avatarHash == null || avatarHash.isEmpty) {
       return null;
     }
@@ -184,27 +217,45 @@ class PublicLinkAPI implements Routing {
     return 'https://cdn.discordapp.com/avatars/$discordId/$avatarHash.png';
   }
 
-  Map<String, dynamic> _unauthenticated() {
+  String? _bungieAvatarUrl(String? avatarPath) {
+    if (avatarPath == null || avatarPath.isEmpty) {
+      return null;
+    }
+    if (avatarPath.startsWith('http')) {
+      return avatarPath;
+    }
+    return 'https://www.bungie.net$avatarPath';
+  }
+
+  Map<String, dynamic> _unauthenticated({bool featureEnabled = true}) {
     return <String, dynamic>{
-      'featureEnabled': true,
+      'featureEnabled': featureEnabled,
       'authenticated': false,
       'sessionAuthenticated': false,
+      'accountLinkId': null,
+      'resumeToken': null,
       'discordConnected': false,
       'bungieConnected': false,
       'discord': null,
       'bungie': <String, dynamic>{
-        'primaryMembershipId': null,
-        'primaryMembershipType': null,
+        'accountId': null,
+        'displayName': null,
+        'avatarUrl': null,
+        'marathonMembershipId': null,
         'membershipCount': 0,
         'memberships': <dynamic>[],
       },
     };
   }
 
-  Response _jsonResponse(Map<String, dynamic> payload) {
-    return Response.ok(
-      jsonEncode(payload),
-      headers: <String, String>{'Content-Type': 'application/json'},
-    );
+  Response _jsonResponse(Map<String, dynamic> payload, {String? cookie}) {
+    Map<String, String> headers = <String, String>{
+      'Content-Type': 'application/json',
+    };
+    if (cookie != null && cookie.isNotEmpty) {
+      headers['Set-Cookie'] = cookie;
+    }
+
+    return Response.ok(jsonEncode(payload), headers: headers);
   }
 }

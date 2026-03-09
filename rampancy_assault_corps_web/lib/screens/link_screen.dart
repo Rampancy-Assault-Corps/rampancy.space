@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:arcane_jaspr/arcane_jaspr.dart';
 import 'package:fast_log/fast_log.dart';
+import 'package:rampancy_assault_corps_web/components/rac_icons.dart';
 import 'package:rampancy_assault_corps_web/components/rac_shell.dart';
 import 'package:rampancy_assault_corps_web/services/link_status_service.dart';
 import 'package:rampancy_assault_corps_web/utils/constants.dart';
@@ -51,45 +52,39 @@ class _LinkScreenState extends State<LinkScreen> {
   void _hydrateQueryState() {
     String query = web.window.location.search;
     String hash = web.window.location.hash;
+    bool hasTransientState = query.isNotEmpty || hash.isNotEmpty;
     _resumeToken =
         _extractResumeToken(query: query, hash: hash) ?? _storedResumeToken();
     if (_resumeToken != null && _resumeToken!.isNotEmpty) {
       _storeResumeToken(_resumeToken!);
     }
-    if (query.isEmpty) {
-      return;
+    if (query.isNotEmpty) {
+      Uri parsed = Uri.parse('https://rampancy.space$query');
+      String? errorCode = parsed.queryParameters['error'];
+      String? linked = parsed.queryParameters['linked'];
+      String? deleted = parsed.queryParameters['deleted'];
+
+      if (errorCode != null && errorCode.isNotEmpty) {
+        warn('link_oauth_error code=$errorCode');
+        _error = _oauthErrorMessage(errorCode);
+        _notice = null;
+      } else if (deleted == 'account') {
+        _clearResumeToken();
+        _notice = 'ACCOUNT DATA DELETED';
+        _error = null;
+      } else if (linked == 'bungie') {
+        _recentlyLinkedProvider = 'bungie';
+        _notice = 'BUNGIE CONNECTED. DISCORD IS NOW UNLOCKED.';
+        _error = null;
+      } else if (linked == 'discord') {
+        _recentlyLinkedProvider = 'discord';
+        _notice = 'DISCORD CONNECTED. ACCOUNT LINK COMPLETE.';
+        _error = null;
+      }
     }
 
-    Uri parsed = Uri.parse('https://rampancy.space$query');
-    String? errorCode = parsed.queryParameters['error'];
-    String? linked = parsed.queryParameters['linked'];
-    String? deleted = parsed.queryParameters['deleted'];
-
-    if (errorCode != null && errorCode.isNotEmpty) {
-      warn('link_oauth_error code=$errorCode');
-      _error = _oauthErrorMessage(errorCode);
-      _notice = null;
-      return;
-    }
-
-    if (deleted == 'account') {
-      _clearResumeToken();
-      _notice = 'ACCOUNT DATA DELETED';
-      _error = null;
-      return;
-    }
-
-    if (linked == 'bungie') {
-      _recentlyLinkedProvider = 'bungie';
-      _notice = 'BUNGIE CONNECTED. DISCORD IS NOW UNLOCKED.';
-      _error = null;
-      return;
-    }
-
-    if (linked == 'discord') {
-      _recentlyLinkedProvider = 'discord';
-      _notice = 'DISCORD CONNECTED. ACCOUNT LINK COMPLETE.';
-      _error = null;
+    if (hasTransientState) {
+      _normalizeLinkUrl();
     }
   }
 
@@ -108,6 +103,11 @@ class _LinkScreenState extends State<LinkScreen> {
     );
     if (!mounted) {
       return;
+    }
+    String? nextResumeToken = status.resumeToken;
+    if (nextResumeToken != null && nextResumeToken.isNotEmpty) {
+      _resumeToken = nextResumeToken;
+      _storeResumeToken(nextResumeToken);
     }
     setState(() {
       _status = status;
@@ -150,7 +150,7 @@ class _LinkScreenState extends State<LinkScreen> {
       resumeToken: _resumeToken,
     );
     info('link_connect_bungie_pressed url=$url');
-    web.window.location.href = url;
+    _navigateAuth(url);
   }
 
   void _connectDiscord() {
@@ -159,7 +159,7 @@ class _LinkScreenState extends State<LinkScreen> {
       resumeToken: _resumeToken,
     );
     info('link_connect_discord_pressed url=$url');
-    web.window.location.href = url;
+    _navigateAuth(url);
   }
 
   Future<void> _logout() async {
@@ -224,6 +224,32 @@ class _LinkScreenState extends State<LinkScreen> {
     }
   }
 
+  void _dismissNotice() {
+    if (_notice == null) {
+      return;
+    }
+    info('link_notice_dismissed');
+    setState(() {
+      _notice = null;
+    });
+  }
+
+  void _dismissError() {
+    if (_error == null) {
+      return;
+    }
+    info('link_error_dismissed');
+    setState(() {
+      _error = null;
+    });
+  }
+
+  void _navigateAuth(String url) => web.window.location.href = url;
+
+  void _normalizeLinkUrl() {
+    web.window.history.replaceState(null, '', AppRoutes.link);
+  }
+
   String _oauthErrorMessage(String code) => switch (code) {
     'bungie_not_configured' =>
       'BUNGIE SIGN-IN IS CURRENTLY UNAVAILABLE. PLEASE TRY AGAIN LATER.',
@@ -232,6 +258,12 @@ class _LinkScreenState extends State<LinkScreen> {
     'bungie_callback_invalid' =>
       'BUNGIE DID NOT RETURN A VALID AUTHORIZATION CODE.',
     'bungie_state_invalid' => 'BUNGIE SIGN-IN SESSION EXPIRED. START AGAIN.',
+    'bungie_identity_missing' =>
+      'BUNGIE ACCOUNT COULD NOT BE VERIFIED. RETRY SIGN-IN.',
+    'bungie_token_exchange_failed' =>
+      'BUNGIE SIGN-IN FAILED DURING AUTHORIZATION. RETRY TO CONTINUE.',
+    'bungie_account_save_failed' =>
+      'BUNGIE ACCOUNT COULD NOT BE SAVED. RETRY TO CONTINUE.',
     'bungie_link_failed' =>
       'BUNGIE SIGN-IN FAILED WHILE SAVING YOUR CONNECTION.',
     'discord_not_configured' =>
@@ -269,18 +301,38 @@ class _LinkScreenState extends State<LinkScreen> {
     List<Component> preludeChildren = <Component>[];
     if (_notice != null) {
       preludeChildren.add(
-        RacSignalBanner(message: _notice!, tone: RacSignalTone.success),
+        RacSignalBanner(
+          message: _notice!,
+          tone: RacSignalTone.success,
+          onDismiss: _dismissNotice,
+        ),
       );
     }
     if (_error != null) {
       preludeChildren.add(
-        RacSignalBanner(message: _error!, tone: RacSignalTone.error),
+        RacSignalBanner(
+          message: _error!,
+          tone: RacSignalTone.error,
+          onDismiss: _dismissError,
+        ),
       );
     }
 
     bool canDelete =
         status.authenticated ||
         (_resumeToken != null && _resumeToken!.isNotEmpty);
+
+    List<Component> headerUtilityChildren = <Component>[
+      if (canDelete)
+        RacIconButton(
+          icon: RacIcons.trash(size: IconSize.md),
+          label: _deleteLoading ? 'DELETING LINKED DATA' : 'DELETE LINKED DATA',
+          onPressed: _deleteLoading ? null : _deleteAccount,
+          disabled: _deleteLoading,
+          tone: RacActionTone.destructive,
+          className: 'rac-header__action',
+        ),
+    ];
 
     List<Component> utilityChildren = <Component>[
       if (status.sessionAuthenticated)
@@ -290,21 +342,13 @@ class _LinkScreenState extends State<LinkScreen> {
           disabled: _logoutLoading,
           tone: RacActionTone.muted,
         ),
-      if (canDelete)
-        RacIconButton(
-          icon: ArcaneIcon.trash(size: IconSize.md),
-          label: _deleteLoading ? 'DELETING LINKED DATA' : 'DELETE LINKED DATA',
-          onPressed: _deleteLoading ? null : _deleteAccount,
-          disabled: _deleteLoading,
-          tone: RacActionTone.destructive,
-          className: 'rac-utility__delete',
-        ),
     ];
 
     return RacShell(
       pageClassName: 'rac-shell--link',
       headerContextLabel: 'ACCOUNT LINK',
       preludeChildren: preludeChildren,
+      headerUtilityChildren: headerUtilityChildren,
       utilityChildren: utilityChildren,
       mainChild: _LinkStageSurface(
         stage: stage,
@@ -458,12 +502,13 @@ class _BungiePanel extends StatelessComponent {
           : 'LOGIN WITH BUNGIE';
       String detail = stage == _LinkStage.loading
           ? 'CHECKING FOR AN EXISTING BUNGIE LINK.'
-          : 'STORE YOUR BUNGIE ID FIRST TO UNLOCK DISCORD.';
+          : 'STORE YOUR BUNGIE ACCOUNT FIRST TO UNLOCK DISCORD.';
       Component? action = stage == _LinkStage.loading
           ? null
           : RacActionButton(
-              label: 'LOGIN WITH BUNGIE',
+              label: '[ Establish Bungie Link ]',
               onPressed: onConnectBungie,
+              className: 'rac-action--inline-link',
             );
 
       return _LinkRailPanel(
@@ -482,9 +527,11 @@ class _BungiePanel extends StatelessComponent {
         detailLines: status.bungieMetaLines,
         avatarUrl: status.bungieAvatarUrl,
         action: RacActionButton(
-          label: bungieConnected ? 'REFRESH BUNGIE' : 'LOGIN WITH BUNGIE',
+          label: bungieConnected
+              ? '[ Refresh Bungie ]'
+              : '[ Establish Bungie Link ]',
           onPressed: onConnectBungie,
-          tone: RacActionTone.muted,
+          className: 'rac-action--inline-link',
         ),
       ),
     );
@@ -543,8 +590,9 @@ class _DiscordPanel extends StatelessComponent {
           detail:
               'YOUR BUNGIE PROFILE IS STORED. COMPLETE THE SECOND STEP TO FINISH ACCOUNT LINKING.',
           action: RacActionButton(
-            label: 'LOGIN WITH DISCORD',
+            label: '[ Establish Discord Link ]',
             onPressed: onConnectDiscord,
+            className: 'rac-action--inline-link',
           ),
         ),
       );
@@ -559,9 +607,11 @@ class _DiscordPanel extends StatelessComponent {
         detailLines: status.discordMetaLines,
         avatarUrl: status.discordAvatarUrl,
         action: RacActionButton(
-          label: discordConnected ? 'REFRESH DISCORD' : 'LOGIN WITH DISCORD',
+          label: discordConnected
+              ? '[ Refresh Discord ]'
+              : '[ Establish Discord Link ]',
           onPressed: onConnectDiscord,
-          tone: RacActionTone.muted,
+          className: 'rac-action--inline-link',
         ),
       ),
     );
@@ -680,21 +730,31 @@ extension _LinkStatusPresentation on LinkStatus {
   }
 
   String get bungieDisplayName {
+    String? accountDisplayName = bungieAccountDisplayName;
+    if (accountDisplayName != null && accountDisplayName.isNotEmpty) {
+      return accountDisplayName;
+    }
+
     LinkStatusMembership? membership = primaryMembership;
     String? displayName = membership?.displayName;
     if (displayName != null && displayName.isNotEmpty) {
       return displayName;
     }
 
-    String? membershipId = bungiePrimaryMembershipId;
-    if (membershipId != null && membershipId.isNotEmpty) {
-      return membershipId;
+    String? accountId = bungieAccountId;
+    if (accountId != null && accountId.isNotEmpty) {
+      return accountId;
     }
 
     return 'BUNGIE ACCOUNT';
   }
 
   String? get bungieAvatarUrl {
+    String? accountAvatarUrl = bungieAccountAvatarUrl;
+    if (accountAvatarUrl != null && accountAvatarUrl.isNotEmpty) {
+      return accountAvatarUrl;
+    }
+
     LinkStatusMembership? membership = primaryMembership;
     String? iconPath = membership?.iconPath;
     if (iconPath == null || iconPath.isEmpty) {
@@ -710,17 +770,19 @@ extension _LinkStatusPresentation on LinkStatus {
 
   List<String> get bungieMetaLines {
     List<String> lines = <String>[];
-    String? membershipId = bungiePrimaryMembershipId;
-    int? membershipType = bungiePrimaryMembershipType;
-    if (membershipId != null && membershipId.isNotEmpty) {
-      lines.add('ID $membershipId');
+    String? accountId = bungieAccountId;
+    if (accountId != null && accountId.isNotEmpty) {
+      lines.add('ACCOUNT ID $accountId');
     }
-    if (membershipType != null) {
-      lines.add('TYPE $membershipType');
+    String? marathonMembershipId = bungieMarathonMembershipId;
+    if (marathonMembershipId != null && marathonMembershipId.isNotEmpty) {
+      lines.add('MARATHON ID $marathonMembershipId');
+    } else if (bungieConnected) {
+      lines.add('MARATHON PROFILE NOT FOUND YET');
     }
     if (memberships.isNotEmpty) {
       String suffix = memberships.length == 1 ? '' : 'S';
-      lines.add('${memberships.length} MEMBERSHIP$suffix STORED');
+      lines.add('${memberships.length} PROFILE$suffix STORED');
     }
     if (lines.isEmpty) {
       lines.add('BUNGIE ACCOUNT READY');

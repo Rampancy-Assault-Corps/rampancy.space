@@ -15,6 +15,8 @@
 :root {
   --rac-font-display: "RACInterference", "SF Mono", monospace;
   --rac-font-mono: "RACInterference", "SF Mono", monospace;
+  --rac-frame-thickness: clamp(6px, min(1.1vmin, 1.1vh), 12px);
+  --rac-link-panel-gap: var(--rac-frame-thickness);
   --rac-red: #920026;
   --rac-red-deep: #79001f;
   --rac-blue: #203581;
@@ -133,26 +135,37 @@ select {
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: clamp(12px, 2.2vmin, 28px);
-  padding: clamp(14px, 3vmin, 30px) clamp(14px, 3vmin, 30px)
-    clamp(12px, 2.8vmin, 28px);
+  gap: clamp(8px, min(1.8vmin, 1.8vh), 22px);
+  padding:
+    clamp(10px, min(2.2vmin, 2.2vh), 24px)
+    clamp(12px, min(2.4vmin, 2.4vh), 26px)
+    clamp(8px, min(2vmin, 2vh), 22px);
 }
 
 .rac-header {
   justify-content: space-between;
 }
 
+.rac-header__aside {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  gap: clamp(8px, 1.6vmin, 14px);
+}
+
 .rac-header__brand {
   display: flex;
   align-items: flex-start;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-width: 0;
-  gap: clamp(10px, 2.2vmin, 22px);
+  gap: clamp(8px, min(1.8vmin, 1.8vh), 18px);
   color: inherit;
+  overflow: hidden;
 }
 
 .rac-header__logo {
-  width: clamp(56px, 9vmin, 92px);
+  width: clamp(40px, min(5.8vmin, 5.8vh), 72px);
   height: auto;
   display: block;
   flex: 0 0 auto;
@@ -160,8 +173,10 @@ select {
 
 .rac-header__meta {
   display: grid;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 2px;
+  overflow: hidden;
 }
 
 .rac-header__version,
@@ -171,13 +186,22 @@ select {
 .rac-copy__detail,
 .rac-footer__legal,
 .rac-signal__copy {
-  font-size: clamp(12px, 0.8vw, 16px);
+  font-size: clamp(11px, min(0.75vw, 1.35vh), 15px);
   line-height: 1.4;
 }
 
 .rac-header__context {
-  font-size: clamp(16px, 3.4vmin, 28px);
+  font-size: clamp(14px, min(2.8vmin, 3.2vh), 24px);
   line-height: 1.06;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rac-header__version {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .rac-header__github {
@@ -206,23 +230,44 @@ select {
   filter: brightness(0) invert(1);
 }
 
+.rac-header__action {
+  flex: 0 0 auto;
+}
+
 .rac-body {
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.6vmin, 14px);
-  padding: 0 0 clamp(8px, 1.8vmin, 16px);
+  gap: clamp(4px, min(1vmin, 1vh), 10px);
+  padding: 0 0 clamp(4px, min(1vmin, 1vh), 10px);
   min-height: 0;
+  position: relative;
 }
 
 .rac-prelude {
   display: grid;
-  gap: clamp(6px, 1.2vmin, 10px);
+  gap: clamp(4px, min(0.8vmin, 0.8vh), 8px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.rac-prelude > * {
+  pointer-events: auto;
 }
 
 .rac-signal {
   border: 2px solid var(--rac-blue-edge);
   background: rgba(9, 22, 67, 0.62);
-  padding: clamp(8px, 1.8vmin, 12px) clamp(12px, 2.4vmin, 18px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(6px, min(1vmin, 1vh), 10px);
+  padding:
+    clamp(6px, min(1vmin, 1vh), 10px)
+    clamp(10px, min(1.8vmin, 1.8vh), 16px);
 }
 
 .rac-signal--success {
@@ -231,6 +276,10 @@ select {
 
 .rac-signal--error {
   color: var(--rac-danger);
+}
+
+.rac-signal__dismiss {
+  flex: 0 0 auto;
 }
 
 .rac-body__inner {
@@ -246,7 +295,7 @@ select {
   min-height: 0;
   display: flex;
   background: var(--rac-blue);
-  border: clamp(4px, 0.8vmin, 8px) solid var(--rac-blue-edge);
+  border: var(--rac-frame-thickness) solid var(--rac-blue-edge);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
@@ -255,7 +304,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: clamp(16px, 3.6vmin, 32px);
+  padding: clamp(12px, min(2.6vmin, 2.6vh), 24px);
 }
 
 .rac-landing__action .rac-action {
@@ -264,30 +313,30 @@ select {
   border: none;
   box-shadow: none;
   background: transparent;
-  font-size: clamp(24px, 5.2vmin, 56px);
+  font-size: clamp(20px, min(4vmin, 4.4vh), 46px);
   color: var(--rac-text);
   text-transform: none;
 }
 
 .rac-main--split {
   width: 100%;
-  padding: clamp(4px, 0.8vmin, 8px);
+  padding: var(--rac-frame-thickness);
   background: var(--rac-blue-edge);
 }
 
 .rac-shell--link .rac-main {
-  border: clamp(4px, 0.8vmin, 8px) solid var(--rac-blue-edge);
-  background: var(--rac-blue-edge);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  border: none;
+  background: transparent;
+  box-shadow: none;
 }
 
 .rac-shell--link .rac-main--split {
-  padding: 0;
+  padding: var(--rac-link-panel-gap);
   background: var(--rac-blue-edge);
 }
 
 .rac-shell--link .rac-panel-stack {
-  gap: clamp(4px, 0.8vmin, 8px);
+  gap: var(--rac-link-panel-gap);
 }
 
 .rac-shell--link .rac-panel {
@@ -299,7 +348,7 @@ select {
   width: 100%;
   display: grid;
   grid-template-rows: repeat(2, minmax(0, 1fr));
-  gap: clamp(6px, 1.2vmin, 12px);
+  gap: clamp(4px, min(0.8vmin, 0.8vh), 8px);
 }
 
 .rac-panel {
@@ -309,8 +358,11 @@ select {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: clamp(18px, 4.4vmin, 40px) clamp(18px, 4.4vmin, 40px)
-    clamp(18px, 4.4vmin, 40px) clamp(44px, 8.6vmin, 72px);
+  padding:
+    clamp(12px, min(2.4vmin, 2.4vh), 26px)
+    clamp(12px, min(2.4vmin, 2.4vh), 26px)
+    clamp(12px, min(2.4vmin, 2.4vh), 26px)
+    clamp(34px, min(6vmin, 6vh), 58px);
   border: 2px solid var(--rac-blue-edge);
   background: var(--rac-blue);
   box-shadow:
@@ -326,23 +378,23 @@ select {
 
 .rac-panel__rail {
   position: absolute;
-  left: clamp(10px, 2vmin, 18px);
-  top: clamp(10px, 2vmin, 18px);
-  bottom: clamp(10px, 2vmin, 18px);
+  left: clamp(8px, min(1.4vmin, 1.4vh), 14px);
+  top: clamp(8px, min(1.4vmin, 1.4vh), 14px);
+  bottom: clamp(8px, min(1.4vmin, 1.4vh), 14px);
   display: flex;
   align-items: center;
   justify-content: center;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   letter-spacing: 0.16em;
-  font-size: clamp(11px, 2.2vmin, 24px);
+  font-size: clamp(10px, min(1.5vmin, 1.6vh), 18px);
   opacity: 0.96;
 }
 
 .rac-panel__state {
   position: absolute;
-  top: clamp(12px, 2.2vmin, 20px);
-  right: clamp(14px, 2.8vmin, 24px);
+  top: clamp(8px, min(1.4vmin, 1.4vh), 14px);
+  right: clamp(10px, min(1.8vmin, 1.8vh), 18px);
   color: var(--rac-muted);
   letter-spacing: 0.15em;
 }
@@ -368,7 +420,7 @@ select {
 }
 
 .rac-copy {
-  gap: clamp(10px, 1.8vmin, 18px);
+  gap: clamp(6px, min(1vmin, 1vh), 12px);
 }
 
 .rac-copy__title,
@@ -377,7 +429,7 @@ select {
 }
 
 .rac-copy__title {
-  font-size: clamp(20px, 4.8vmin, 60px);
+  font-size: clamp(18px, min(3.8vmin, 3.8vh), 46px);
   overflow-wrap: anywhere;
 }
 
@@ -388,16 +440,16 @@ select {
 }
 
 .rac-copy__action {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .rac-identity {
-  gap: clamp(10px, 1.8vmin, 16px);
+  gap: clamp(6px, min(1vmin, 1vh), 12px);
 }
 
 .rac-identity__avatar-frame {
-  width: clamp(56px, 13vmin, 122px);
-  height: clamp(56px, 13vmin, 122px);
+  width: clamp(48px, min(9.5vmin, 9.5vh), 96px);
+  height: clamp(48px, min(9.5vmin, 9.5vh), 96px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -423,13 +475,13 @@ select {
 }
 
 .rac-identity__title {
-  font-size: clamp(20px, 5.2vmin, 68px);
+  font-size: clamp(18px, min(4vmin, 4vh), 50px);
   overflow-wrap: anywhere;
 }
 
 .rac-identity__details {
   display: grid;
-  gap: clamp(4px, 0.8vmin, 8px);
+  gap: clamp(2px, min(0.5vmin, 0.5vh), 6px);
 }
 
 .rac-identity__detail {
@@ -438,21 +490,23 @@ select {
 }
 
 .rac-identity__action {
-  margin-top: 8px;
+  margin-top: 4px;
 }
 
 .rac-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: clamp(38px, 6vmin, 52px);
+  min-height: clamp(34px, min(4.5vmin, 4.5vh), 46px);
   max-width: 100%;
-  padding: clamp(10px, 1.8vmin, 14px) clamp(14px, 2.8vmin, 24px);
+  padding:
+    clamp(8px, min(1.2vmin, 1.2vh), 12px)
+    clamp(12px, min(2vmin, 2vh), 18px);
   border: 2px solid var(--rac-text);
   background: transparent;
   color: var(--rac-text);
   font: inherit;
-  font-size: clamp(14px, 2.1vmin, 22px);
+  font-size: clamp(13px, min(1.6vmin, 1.7vh), 18px);
   letter-spacing: 0.08em;
   text-align: center;
   text-transform: uppercase;
@@ -485,14 +539,14 @@ select {
 .rac-utilities {
   display: flex;
   flex-wrap: wrap;
-  gap: clamp(8px, 1.4vmin, 12px);
+  gap: clamp(6px, min(0.8vmin, 0.8vh), 10px);
   justify-content: flex-end;
-  padding: 0 clamp(14px, 3vmin, 30px);
+  padding: 0 clamp(12px, min(2.4vmin, 2.4vh), 24px);
 }
 
 .rac-icon-action {
-  min-width: clamp(40px, 6vmin, 54px);
-  min-height: clamp(40px, 6vmin, 54px);
+  min-width: clamp(34px, min(4.2vmin, 4.2vh), 44px);
+  min-height: clamp(34px, min(4.2vmin, 4.2vh), 44px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -508,8 +562,8 @@ select {
 }
 
 .rac-icon-action svg {
-  width: 22px;
-  height: 22px;
+  width: clamp(14px, min(1.8vmin, 1.8vh), 20px);
+  height: clamp(14px, min(1.8vmin, 1.8vh), 20px);
 }
 
 .rac-icon-action--muted {
@@ -549,7 +603,7 @@ select {
 }
 
 .rac-footer__title {
-  font-size: clamp(18px, 3.4vmin, 42px);
+  font-size: clamp(16px, min(2.6vmin, 2.6vh), 32px);
   line-height: 1.04;
 }
 
@@ -589,6 +643,17 @@ a:focus-visible {
   transform: translateY(0);
 }
 
+.rac-action--inline-link {
+  min-height: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  font-size: clamp(18px, min(2.3vmin, 2.3vh), 28px);
+  color: var(--rac-text);
+  text-transform: none;
+}
+
 /* ============================================
    LINKS
    ============================================ */
@@ -626,6 +691,34 @@ a:hover {
 /* ============================================
    RESPONSIVE
    ============================================ */
+@media (min-width: 641px) {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #app,
+  .rac-shell {
+    height: 100vh;
+    height: 100svh;
+  }
+
+  .rac-header {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .rac-header__aside {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+
+  .rac-header__context {
+    font-size: clamp(13px, min(2.3vmin, 2.5vh), 20px);
+  }
+}
+
 @media (max-width: 960px) {
   .rac-footer {
     align-items: stretch;
@@ -669,13 +762,46 @@ a:hover {
     padding: clamp(12px, 2.6vmin, 18px);
   }
 
+  .rac-header {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+  }
+
   .rac-body {
     gap: clamp(6px, 1.2vmin, 10px);
     padding: 0 0 clamp(6px, 1.2vmin, 10px);
   }
 
   .rac-header__brand {
-    gap: 10px;
+    gap: 8px;
+  }
+
+  .rac-header__logo {
+    width: clamp(34px, 7vw, 42px);
+  }
+
+  .rac-header__aside {
+    gap: 6px;
+    width: auto;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .rac-header__meta {
+    gap: 0;
+  }
+
+  .rac-header__version {
+    font-size: clamp(10px, 2.4vw, 12px);
+  }
+
+  .rac-header__context {
+    font-size: clamp(11px, 2.7vw, 14px);
+  }
+
+  .rac-signal {
+    align-items: flex-start;
   }
 
   .rac-main__frame--landing {

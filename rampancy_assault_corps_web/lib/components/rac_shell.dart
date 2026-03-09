@@ -1,4 +1,5 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:rampancy_assault_corps_web/components/rac_icons.dart';
 import 'package:rampancy_assault_corps_web/utils/constants.dart';
 
 enum RacActionTone { primary, muted, destructive }
@@ -10,6 +11,7 @@ class RacShell extends StatelessComponent {
   final String headerContextLabel;
   final List<Component> preludeChildren;
   final Component mainChild;
+  final List<Component> headerUtilityChildren;
   final List<Component> utilityChildren;
 
   const RacShell({
@@ -18,6 +20,7 @@ class RacShell extends StatelessComponent {
     required this.headerContextLabel,
     required this.mainChild,
     this.preludeChildren = const <Component>[],
+    this.headerUtilityChildren = const <Component>[],
     this.utilityChildren = const <Component>[],
   });
 
@@ -51,6 +54,11 @@ class RacShell extends StatelessComponent {
       );
     }
 
+    List<Component> headerAsideChildren = <Component>[
+      githubBadge,
+      ...headerUtilityChildren,
+    ];
+
     return div([
       header([
         a(
@@ -72,7 +80,7 @@ class RacShell extends StatelessComponent {
           href: AppRoutes.home,
           classes: 'rac-header__brand',
         ),
-        githubBadge,
+        div(headerAsideChildren, classes: 'rac-header__aside'),
       ], classes: 'rac-header'),
       main_([
         if (preludeChildren.isNotEmpty)
@@ -187,8 +195,14 @@ class RacIconButton extends StatelessComponent {
 class RacSignalBanner extends StatelessComponent {
   final String message;
   final RacSignalTone tone;
+  final VoidCallback? onDismiss;
 
-  const RacSignalBanner({super.key, required this.message, required this.tone});
+  const RacSignalBanner({
+    super.key,
+    required this.message,
+    required this.tone,
+    this.onDismiss,
+  });
 
   @override
   Component build(BuildContext context) {
@@ -199,6 +213,16 @@ class RacSignalBanner extends StatelessComponent {
 
     return div([
       div([Component.text(message)], classes: 'rac-signal__copy'),
+      if (onDismiss != null)
+        RacIconButton(
+          icon: RacIcons.close(size: IconSize.sm),
+          label: 'DISMISS ALERT',
+          onPressed: onDismiss,
+          tone: tone == RacSignalTone.error
+              ? RacActionTone.destructive
+              : RacActionTone.muted,
+          className: 'rac-signal__dismiss',
+        ),
     ], classes: 'rac-signal $toneClass');
   }
 }

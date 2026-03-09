@@ -318,6 +318,21 @@ class OAuthSecurityService {
     );
   }
 
+  Future<String> decryptToken(EncryptedToken token) async {
+    List<int> nonce = base64Url.decode(token.nonce);
+    List<int> packed = base64Url.decode(token.ciphertext);
+    if (packed.length < 16) {
+      throw StateError('Encrypted token payload is invalid.');
+    }
+
+    int macOffset = packed.length - 16;
+    List<int> ciphertext = packed.sublist(0, macOffset);
+    List<int> macBytes = packed.sublist(macOffset);
+    SecretBox box = SecretBox(ciphertext, nonce: nonce, mac: Mac(macBytes));
+    List<int> plaintext = await _aesGcm.decrypt(box, secretKey: _tokenKey);
+    return utf8.decode(plaintext);
+  }
+
   Future<String> _sign(Map<String, dynamic> payload, SecretKey key) async {
     final String encodedPayload = base64UrlEncode(
       utf8.encode(jsonEncode(payload)),

@@ -75,8 +75,12 @@ class LinkStatus {
   final bool sessionAuthenticated;
   final bool discordConnected;
   final bool bungieConnected;
-  final String? bungiePrimaryMembershipId;
-  final int? bungiePrimaryMembershipType;
+  final String? accountLinkId;
+  final String? resumeToken;
+  final String? bungieAccountId;
+  final String? bungieAccountDisplayName;
+  final String? bungieAccountAvatarUrl;
+  final String? bungieMarathonMembershipId;
   final LinkStatusDiscord? discord;
   final List<LinkStatusMembership> memberships;
 
@@ -86,8 +90,12 @@ class LinkStatus {
     required this.sessionAuthenticated,
     required this.discordConnected,
     required this.bungieConnected,
-    required this.bungiePrimaryMembershipId,
-    required this.bungiePrimaryMembershipType,
+    required this.accountLinkId,
+    required this.resumeToken,
+    required this.bungieAccountId,
+    required this.bungieAccountDisplayName,
+    required this.bungieAccountAvatarUrl,
+    required this.bungieMarathonMembershipId,
     required this.discord,
     required this.memberships,
   });
@@ -98,8 +106,12 @@ class LinkStatus {
     sessionAuthenticated: false,
     discordConnected: false,
     bungieConnected: false,
-    bungiePrimaryMembershipId: null,
-    bungiePrimaryMembershipType: null,
+    accountLinkId: null,
+    resumeToken: null,
+    bungieAccountId: null,
+    bungieAccountDisplayName: null,
+    bungieAccountAvatarUrl: null,
+    bungieMarathonMembershipId: null,
     discord: null,
     memberships: <LinkStatusMembership>[],
   );
@@ -114,13 +126,15 @@ class LinkStatus {
     }
 
     List<LinkStatusMembership> memberships = <LinkStatusMembership>[];
-    String? bungiePrimaryMembershipId;
-    int? bungiePrimaryMembershipType;
+    String? bungieAccountId;
+    String? bungieAccountDisplayName;
+    String? bungieAccountAvatarUrl;
+    String? bungieMarathonMembershipId;
     if (bungieRaw is Map<String, dynamic>) {
-      bungiePrimaryMembershipId = bungieRaw['primaryMembershipId'] as String?;
-      bungiePrimaryMembershipType = LinkStatusMembership._asInt(
-        bungieRaw['primaryMembershipType'],
-      );
+      bungieAccountId = bungieRaw['accountId'] as String?;
+      bungieAccountDisplayName = bungieRaw['displayName'] as String?;
+      bungieAccountAvatarUrl = bungieRaw['avatarUrl'] as String?;
+      bungieMarathonMembershipId = bungieRaw['marathonMembershipId'] as String?;
       dynamic rawMemberships = bungieRaw['memberships'];
       if (rawMemberships is List<dynamic>) {
         for (dynamic raw in rawMemberships) {
@@ -137,8 +151,12 @@ class LinkStatus {
       sessionAuthenticated: (map['sessionAuthenticated'] as bool?) ?? false,
       discordConnected: (map['discordConnected'] as bool?) ?? false,
       bungieConnected: (map['bungieConnected'] as bool?) ?? false,
-      bungiePrimaryMembershipId: bungiePrimaryMembershipId,
-      bungiePrimaryMembershipType: bungiePrimaryMembershipType,
+      accountLinkId: map['accountLinkId'] as String?,
+      resumeToken: map['resumeToken'] as String?,
+      bungieAccountId: bungieAccountId,
+      bungieAccountDisplayName: bungieAccountDisplayName,
+      bungieAccountAvatarUrl: bungieAccountAvatarUrl,
+      bungieMarathonMembershipId: bungieMarathonMembershipId,
       discord: discord,
       memberships: memberships,
     );
@@ -179,7 +197,7 @@ class LinkStatusService {
 
       LinkStatus status = LinkStatus.fromMap(decoded);
       verbose(
-        'link_status_fetch_done authenticated=${status.authenticated} bungieConnected=${status.bungieConnected} discordConnected=${status.discordConnected}',
+        'link_status_fetch_done authenticated=${status.authenticated} bungieConnected=${status.bungieConnected} discordConnected=${status.discordConnected} accountLinkId=${status.accountLinkId}',
       );
       return status;
     } catch (e) {
@@ -259,6 +277,7 @@ class LinkStatusService {
     if (configured.isNotEmpty) {
       return configured;
     }
+
     return '';
   }
 }

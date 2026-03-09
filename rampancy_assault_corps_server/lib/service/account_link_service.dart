@@ -1,4 +1,5 @@
 import 'package:fast_log/fast_log.dart';
+import 'package:fire_api/fire_api.dart';
 import 'package:rampancy_assault_corps_models/rampancy_assault_corps_models.dart';
 import 'package:rampancy_assault_corps_server/service/link_sync_state_service.dart';
 import 'package:rampancy_assault_corps_server/service/oauth_provider_service.dart';
@@ -25,6 +26,18 @@ class AccountLinkStatus {
   });
 }
 
+class AccountLinkIdResolution {
+  final String requestedAccountLinkId;
+  final String canonicalAccountLinkId;
+  final bool aliased;
+
+  const AccountLinkIdResolution({
+    required this.requestedAccountLinkId,
+    required this.canonicalAccountLinkId,
+    required this.aliased,
+  });
+}
+
 class _CachedAccountLinkStatus {
   final AccountLinkStatus status;
   final int expiresAt;
@@ -37,6 +50,7 @@ class _CachedAccountLinkStatus {
 
 class AccountLinkService {
   static const Duration _statusCacheTtl = Duration(seconds: 20);
+  static const String _aliasCollectionPath = 'account_link_aliases';
 
   final LinkSyncStateService syncState;
   final Map<String, _CachedAccountLinkStatus> _statusCache;
@@ -53,10 +67,16 @@ class AccountLinkService {
       'account_link_discord_upsert_begin accountLinkId=$accountLinkId discordId=${profile.id}',
     );
     int now = DateTime.now().millisecondsSinceEpoch;
-    AccountLink? target = await _loadByAccountLinkId(accountLinkId);
+    AccountLinkIdResolution? resolution = await resolveAccountLinkId(
+      accountLinkId,
+    );
+    String? canonicalAccountLinkId = resolution?.canonicalAccountLinkId;
+    AccountLink? target = await _loadDirectByAccountLinkId(
+      canonicalAccountLinkId,
+    );
     AccountLink? existingForDiscord = await _findByDiscordId(profile.id);
     verbose(
-      'account_link_discord_upsert_lookup targetFound=${target != null} existingForDiscord=${existingForDiscord != null}',
+      'account_link_discord_upsert_lookup targetFound=${target != null} existingForDiscord=${existingForDiscord != null} canonicalAccountLinkId=$canonicalAccountLinkId',
     );
 
     if (target == null || !target.bungieConnected) {
@@ -86,7 +106,6 @@ class AccountLinkService {
       );
       await $crud.setAccountLink(existingForDiscord.accountLinkId, detached);
       _invalidateStatuses(<String>[existingForDiscord.accountLinkId]);
-      existingForDiscord = null;
     }
 
     String currentId = target.accountLinkId;
@@ -116,46 +135,39 @@ class AccountLinkService {
     required String? accountLinkId,
     required EncryptedToken encryptedRefreshToken,
     required int? refreshExpiresAt,
-    required List<BungieMembershipData> memberships,
+    required BungieOAuthResult result,
+    bool emitSyncEvent = true,
   }) async {
     info(
-      'account_link_bungie_upsert_begin accountLinkId=$accountLinkId memberships=${memberships.length}',
+      'account_link_bungie_upsert_begin accountLinkId=$accountLinkId bungieAccountId=${result.accountId} marathonMembershipId=${result.marathonMembershipId} memberships=${result.memberships.length}',
     );
-    int now = DateTime.now().millisecondsSinceEpoch;
-    BungieMembershipData? primaryMembership = _primaryMembership(memberships);
-    String? primaryMembershipId = primaryMembership?.membershipId;
-    int? primaryMembershipType = primaryMembership?.membershipType;
-    String? primaryMembershipKey = _primaryMembershipKey(primaryMembership);
-
-    if (primaryMembershipId == null || primaryMembershipId.isEmpty) {
-      throw StateError('Bungie returned no primary membership id.');
-    }
-
-    String targetAccountLinkId = primaryMembershipId;
-    AccountLink? sessionLink = await _loadByAccountLinkId(accountLinkId);
-    AccountLink? existingAtTargetId = await _loadByAccountLinkId(
-      targetAccountLinkId,
-    );
-    AccountLink? existingForPrimaryKey;
-    if (primaryMembershipKey != null) {
-      existingForPrimaryKey = await _findByBungiePrimaryMembershipKey(
-        primaryMembershipKey,
+    String targetAccountLinkId = result.accountId.trim();
+    if (targetAccountLinkId.isEmpty) {
+      throw const BungieIdentityMissingException(
+        'Bungie returned no Bungie account id.',
       );
     }
+
+    int now = DateTime.now().millisecondsSinceEpoch;
+    AccountLinkIdResolution? resolution = await resolveAccountLinkId(
+      accountLinkId,
+    );
+    String? canonicalSessionAccountLinkId = resolution?.canonicalAccountLinkId;
+    AccountLink? sessionLink = await _loadDirectByAccountLinkId(
+      canonicalSessionAccountLinkId,
+    );
+    AccountLink? existingAtTargetId = await _loadDirectByAccountLinkId(
+      targetAccountLinkId,
+    );
     verbose(
-      'account_link_bungie_upsert_lookup sessionFound=${sessionLink != null} targetFound=${existingAtTargetId != null} primaryFound=${existingForPrimaryKey != null} targetAccountLinkId=$targetAccountLinkId primaryMembershipKey=$primaryMembershipKey',
+      'account_link_bungie_upsert_lookup sessionFound=${sessionLink != null} targetFound=${existingAtTargetId != null} canonicalSessionAccountLinkId=$canonicalSessionAccountLinkId targetAccountLinkId=$targetAccountLinkId',
     );
 
     Map<String, AccountLink> existingLinks = <String, AccountLink>{};
     _storeExistingLink(existingLinks, sessionLink);
     _storeExistingLink(existingLinks, existingAtTargetId);
-    _storeExistingLink(existingLinks, existingForPrimaryKey);
     AccountLink? previousState = _mergedLinkState(
-      links: <AccountLink?>[
-        existingAtTargetId,
-        sessionLink,
-        existingForPrimaryKey,
-      ],
+      links: <AccountLink?>[sessionLink, existingAtTargetId],
       now: now,
     );
 
@@ -163,32 +175,40 @@ class AccountLinkService {
       discordId: _firstNonEmptyString(<String?>[
         existingAtTargetId?.discordId,
         sessionLink?.discordId,
-        existingForPrimaryKey?.discordId,
       ]),
       discordUsername: _firstNonEmptyString(<String?>[
         existingAtTargetId?.discordUsername,
         sessionLink?.discordUsername,
-        existingForPrimaryKey?.discordUsername,
       ]),
       discordGlobalName: _firstNonEmptyString(<String?>[
         existingAtTargetId?.discordGlobalName,
         sessionLink?.discordGlobalName,
-        existingForPrimaryKey?.discordGlobalName,
       ]),
       discordAvatarHash: _firstNonEmptyString(<String?>[
         existingAtTargetId?.discordAvatarHash,
         sessionLink?.discordAvatarHash,
-        existingForPrimaryKey?.discordAvatarHash,
       ]),
       discordLinkedAt: _firstNonNullInt(<int?>[
         existingAtTargetId?.discordLinkedAt,
         sessionLink?.discordLinkedAt,
-        existingForPrimaryKey?.discordLinkedAt,
       ]),
       bungieConnected: true,
-      bungiePrimaryMembershipKey: primaryMembershipKey,
-      bungiePrimaryMembershipId: primaryMembershipId,
-      bungiePrimaryMembershipType: primaryMembershipType,
+      bungieAccountId: targetAccountLinkId,
+      bungieDisplayName: _firstNonEmptyString(<String?>[
+        result.displayName,
+        existingAtTargetId?.bungieDisplayName,
+        sessionLink?.bungieDisplayName,
+      ]),
+      bungieAvatarPath: _firstNonEmptyString(<String?>[
+        result.avatarPath,
+        existingAtTargetId?.bungieAvatarPath,
+        sessionLink?.bungieAvatarPath,
+      ]),
+      bungieMarathonMembershipId: _firstNonEmptyString(<String?>[
+        result.marathonMembershipId,
+        existingAtTargetId?.bungieMarathonMembershipId,
+        sessionLink?.bungieMarathonMembershipId,
+      ]),
       bungieLinkedAt: now,
       bungieRefreshCiphertext: encryptedRefreshToken.ciphertext,
       bungieRefreshNonce: encryptedRefreshToken.nonce,
@@ -199,24 +219,42 @@ class AccountLinkService {
     await $crud.setAccountLink(targetAccountLinkId, next);
     await _syncMemberships(
       accountLinkId: targetAccountLinkId,
-      memberships: memberships,
+      memberships: result.memberships,
       now: now,
     );
 
+    List<String> migratedIds = <String>[];
     for (MapEntry<String, AccountLink> entry in existingLinks.entries) {
-      if (entry.key == targetAccountLinkId) {
+      String existingId = entry.key;
+      if (existingId == targetAccountLinkId) {
         continue;
       }
-      await deleteAccountLink(entry.key, emitSyncEvent: false);
+      migratedIds.add(existingId);
+      await _repointAliases(
+        fromCanonicalAccountLinkId: existingId,
+        toCanonicalAccountLinkId: targetAccountLinkId,
+      );
+      await _createAlias(existingId, targetAccountLinkId);
+      await _deleteAccountLinkDirect(existingId);
     }
-    _invalidateStatuses(<String>[targetAccountLinkId, ...existingLinks.keys]);
-    await _recordStateChange(
-      accountLinkId: targetAccountLinkId,
-      previous: previousState,
-      next: next,
-    );
 
-    info('account_link_bungie_upsert_saved accountLinkId=$targetAccountLinkId');
+    _invalidateStatuses(<String>[
+      targetAccountLinkId,
+      ...existingLinks.keys,
+      ...(resolution == null
+          ? <String>[]
+          : <String>[resolution.requestedAccountLinkId]),
+    ]);
+    if (emitSyncEvent) {
+      await _recordStateChange(
+        accountLinkId: targetAccountLinkId,
+        previous: previousState,
+        next: next,
+      );
+    }
+    info(
+      'account_link_bungie_upsert_saved accountLinkId=$targetAccountLinkId migratedIds=${migratedIds.join(',')}',
+    );
     return AccountLinkRecord(accountLinkId: targetAccountLinkId, link: next);
   }
 
@@ -226,28 +264,50 @@ class AccountLinkService {
       return _emptyStatus();
     }
 
+    AccountLinkIdResolution? resolution = await resolveAccountLinkId(
+      accountLinkId,
+    );
+    if (resolution == null) {
+      return _emptyStatus();
+    }
+
+    String canonicalAccountLinkId = resolution.canonicalAccountLinkId;
     int now = DateTime.now().millisecondsSinceEpoch;
     _pruneStatusCache(now);
-    _CachedAccountLinkStatus? cached = _statusCache[accountLinkId];
+    _CachedAccountLinkStatus? cached = _statusCache[canonicalAccountLinkId];
     if (cached != null && cached.expiresAt > now) {
-      verbose('account_link_status_cache_hit accountLinkId=$accountLinkId');
+      if (resolution.aliased) {
+        _statusCache[resolution.requestedAccountLinkId] = cached;
+      }
+      verbose(
+        'account_link_status_cache_hit accountLinkId=$accountLinkId canonicalAccountLinkId=$canonicalAccountLinkId',
+      );
       return cached.status;
     }
 
-    AccountLink? link = await $crud.getAccountLink(accountLinkId);
+    AccountLink? link = await _loadDirectByAccountLinkId(
+      canonicalAccountLinkId,
+    );
     if (link == null) {
       AccountLinkStatus emptyStatus = _emptyStatus();
-      _statusCache[accountLinkId] = _CachedAccountLinkStatus(
+      _statusCache[canonicalAccountLinkId] = _CachedAccountLinkStatus(
         status: emptyStatus,
         expiresAt: now + _statusCacheTtl.inMilliseconds,
       );
+      if (resolution.aliased) {
+        _statusCache[resolution.requestedAccountLinkId] =
+            _CachedAccountLinkStatus(
+              status: emptyStatus,
+              expiresAt: now + _statusCacheTtl.inMilliseconds,
+            );
+      }
       return emptyStatus;
     }
 
-    AccountLink model = $crud.accountLinkModel(accountLinkId);
+    AccountLink model = $crud.accountLinkModel(canonicalAccountLinkId);
     List<BungieMembership> memberships = await model.getBungieMemberships();
     verbose(
-      'account_link_status_resolved accountLinkId=$accountLinkId discordConnected=${_isDiscordConnected(link)} bungieConnected=${link.bungieConnected} memberships=${memberships.length}',
+      'account_link_status_resolved requestedAccountLinkId=$accountLinkId canonicalAccountLinkId=$canonicalAccountLinkId discordConnected=${_isDiscordConnected(link)} bungieConnected=${link.bungieConnected} memberships=${memberships.length}',
     );
 
     AccountLinkStatus status = AccountLinkStatus(
@@ -256,11 +316,67 @@ class AccountLinkService {
       link: link,
       memberships: memberships,
     );
-    _statusCache[accountLinkId] = _CachedAccountLinkStatus(
+    _CachedAccountLinkStatus cachedStatus = _CachedAccountLinkStatus(
       status: status,
       expiresAt: now + _statusCacheTtl.inMilliseconds,
     );
+    _statusCache[canonicalAccountLinkId] = cachedStatus;
+    if (resolution.aliased) {
+      _statusCache[resolution.requestedAccountLinkId] = cachedStatus;
+    }
     return status;
+  }
+
+  Future<AccountLinkIdResolution?> resolveAccountLinkId(
+    String? accountLinkId,
+  ) async {
+    if (accountLinkId == null || accountLinkId.isEmpty) {
+      return null;
+    }
+
+    String requestedAccountLinkId = accountLinkId;
+    String currentAccountLinkId = requestedAccountLinkId;
+    bool aliased = false;
+    for (int depth = 0; depth < 6; depth++) {
+      AccountLink? directLink = await _loadDirectByAccountLinkId(
+        currentAccountLinkId,
+      );
+      if (directLink != null) {
+        return AccountLinkIdResolution(
+          requestedAccountLinkId: requestedAccountLinkId,
+          canonicalAccountLinkId: currentAccountLinkId,
+          aliased: aliased,
+        );
+      }
+
+      DocumentSnapshot aliasSnapshot = await _aliasDocument(
+        currentAccountLinkId,
+      ).get();
+      Map<String, dynamic>? aliasData = aliasSnapshot.data;
+      String? nextAccountLinkId = _asNonEmptyString(
+        aliasData?['canonicalAccountLinkId'],
+      );
+      if (nextAccountLinkId == null ||
+          nextAccountLinkId == currentAccountLinkId) {
+        return AccountLinkIdResolution(
+          requestedAccountLinkId: requestedAccountLinkId,
+          canonicalAccountLinkId: currentAccountLinkId,
+          aliased: aliased,
+        );
+      }
+
+      aliased = true;
+      currentAccountLinkId = nextAccountLinkId;
+    }
+
+    warn(
+      'account_link_alias_resolution_depth_exceeded requestedAccountLinkId=$requestedAccountLinkId currentAccountLinkId=$currentAccountLinkId',
+    );
+    return AccountLinkIdResolution(
+      requestedAccountLinkId: requestedAccountLinkId,
+      canonicalAccountLinkId: currentAccountLinkId,
+      aliased: aliased,
+    );
   }
 
   Future<void> deleteAccountLink(
@@ -271,35 +387,54 @@ class AccountLinkService {
       return;
     }
 
-    AccountLink? link = await $crud.getAccountLink(accountLinkId);
+    AccountLinkIdResolution? resolution = await resolveAccountLinkId(
+      accountLinkId,
+    );
+    if (resolution == null) {
+      return;
+    }
+
+    String canonicalAccountLinkId = resolution.canonicalAccountLinkId;
+    AccountLink? link = await _loadDirectByAccountLinkId(
+      canonicalAccountLinkId,
+    );
     if (link == null) {
-      verbose('account_link_delete_missing accountLinkId=$accountLinkId');
+      verbose(
+        'account_link_delete_missing requestedAccountLinkId=$accountLinkId canonicalAccountLinkId=$canonicalAccountLinkId',
+      );
+      await _deleteAliasDocument(resolution.requestedAccountLinkId);
       return;
     }
 
     List<BungieMembership> memberships = await $crud
-        .accountLinkModel(accountLinkId)
+        .accountLinkModel(canonicalAccountLinkId)
         .getBungieMemberships();
     for (BungieMembership membership in memberships) {
       await $crud
-          .accountLinkModel(accountLinkId)
+          .accountLinkModel(canonicalAccountLinkId)
           .deleteBungieMembership(membership.bungieMembershipId);
     }
-    await $crud.deleteAccountLink(accountLinkId);
-    _invalidateStatuses(<String>[accountLinkId]);
+    await $crud.deleteAccountLink(canonicalAccountLinkId);
+    await _deleteAliasDocument(canonicalAccountLinkId);
+    await _deleteAliasDocument(resolution.requestedAccountLinkId);
+    await _deleteAliasesForCanonicalId(canonicalAccountLinkId);
+    _invalidateStatuses(<String>[
+      canonicalAccountLinkId,
+      resolution.requestedAccountLinkId,
+    ]);
     if (emitSyncEvent) {
       await _recordStateChange(
-        accountLinkId: accountLinkId,
+        accountLinkId: canonicalAccountLinkId,
         previous: link,
         next: null,
       );
     }
     info(
-      'account_link_delete_done accountLinkId=$accountLinkId memberships=${memberships.length}',
+      'account_link_delete_done accountLinkId=$canonicalAccountLinkId memberships=${memberships.length}',
     );
   }
 
-  Future<AccountLink?> _loadByAccountLinkId(String? accountLinkId) async {
+  Future<AccountLink?> _loadDirectByAccountLinkId(String? accountLinkId) async {
     if (accountLinkId == null || accountLinkId.isEmpty) {
       return null;
     }
@@ -311,7 +446,8 @@ class AccountLinkService {
       return null;
     }
     List<AccountLink> matches = await $crud.getAccountLinks(
-      (ref) => ref.whereEqual('discordId', discordId).limit(1),
+      (CollectionReference ref) =>
+          ref.whereEqual('discordId', discordId).limit(1),
     );
     if (matches.isEmpty) {
       verbose('account_link_find_by_discord none discordId=$discordId');
@@ -319,23 +455,6 @@ class AccountLinkService {
     }
     verbose(
       'account_link_find_by_discord hit discordId=$discordId accountLinkId=${matches.first.accountLinkId}',
-    );
-    return matches.first;
-  }
-
-  Future<AccountLink?> _findByBungiePrimaryMembershipKey(String key) async {
-    if (key.isEmpty) {
-      return null;
-    }
-    List<AccountLink> matches = await $crud.getAccountLinks(
-      (ref) => ref.whereEqual('bungiePrimaryMembershipKey', key).limit(1),
-    );
-    if (matches.isEmpty) {
-      verbose('account_link_find_by_bungie_key none key=$key');
-      return null;
-    }
-    verbose(
-      'account_link_find_by_bungie_key hit key=$key accountLinkId=${matches.first.accountLinkId}',
     );
     return matches.first;
   }
@@ -438,28 +557,102 @@ class AccountLinkService {
     }
   }
 
-  BungieMembershipData? _primaryMembership(
-    List<BungieMembershipData> memberships,
-  ) {
-    for (BungieMembershipData membership in memberships) {
-      if (membership.isPrimary) {
-        return membership;
-      }
+  Future<void> _deleteAccountLinkDirect(String accountLinkId) async {
+    if (accountLinkId.isEmpty) {
+      return;
     }
-    if (memberships.isEmpty) {
-      return null;
+
+    List<BungieMembership> memberships = await $crud
+        .accountLinkModel(accountLinkId)
+        .getBungieMemberships();
+    for (BungieMembership membership in memberships) {
+      await $crud
+          .accountLinkModel(accountLinkId)
+          .deleteBungieMembership(membership.bungieMembershipId);
     }
-    return memberships.first;
+    await $crud.deleteAccountLink(accountLinkId);
   }
 
-  String? _primaryMembershipKey(BungieMembershipData? membership) {
-    if (membership == null) {
-      return null;
+  Future<void> _createAlias(
+    String legacyAccountLinkId,
+    String canonicalAccountLinkId,
+  ) async {
+    if (legacyAccountLinkId.isEmpty ||
+        canonicalAccountLinkId.isEmpty ||
+        legacyAccountLinkId == canonicalAccountLinkId) {
+      return;
     }
-    return _membershipDocumentId(
-      membership.membershipType,
-      membership.membershipId,
+
+    int now = DateTime.now().millisecondsSinceEpoch;
+    await _aliasDocument(legacyAccountLinkId).set(<String, dynamic>{
+      'canonicalAccountLinkId': canonicalAccountLinkId,
+      'updatedAt': now,
+    });
+    verbose(
+      'account_link_alias_created legacyAccountLinkId=$legacyAccountLinkId canonicalAccountLinkId=$canonicalAccountLinkId',
     );
+  }
+
+  Future<void> _repointAliases({
+    required String fromCanonicalAccountLinkId,
+    required String toCanonicalAccountLinkId,
+  }) async {
+    if (fromCanonicalAccountLinkId.isEmpty ||
+        toCanonicalAccountLinkId.isEmpty ||
+        fromCanonicalAccountLinkId == toCanonicalAccountLinkId) {
+      return;
+    }
+
+    int now = DateTime.now().millisecondsSinceEpoch;
+    List<DocumentSnapshot> aliasSnapshots = await _aliasCollection()
+        .whereEqual('canonicalAccountLinkId', fromCanonicalAccountLinkId)
+        .get();
+    for (DocumentSnapshot aliasSnapshot in aliasSnapshots) {
+      await aliasSnapshot.reference.set(<String, dynamic>{
+        'canonicalAccountLinkId': toCanonicalAccountLinkId,
+        'updatedAt': now,
+      });
+    }
+    if (aliasSnapshots.isNotEmpty) {
+      verbose(
+        'account_link_aliases_repointed fromCanonicalAccountLinkId=$fromCanonicalAccountLinkId toCanonicalAccountLinkId=$toCanonicalAccountLinkId count=${aliasSnapshots.length}',
+      );
+    }
+  }
+
+  Future<void> _deleteAliasesForCanonicalId(
+    String canonicalAccountLinkId,
+  ) async {
+    if (canonicalAccountLinkId.isEmpty) {
+      return;
+    }
+
+    List<DocumentSnapshot> aliasSnapshots = await _aliasCollection()
+        .whereEqual('canonicalAccountLinkId', canonicalAccountLinkId)
+        .get();
+    for (DocumentSnapshot aliasSnapshot in aliasSnapshots) {
+      await aliasSnapshot.reference.delete();
+    }
+  }
+
+  Future<void> _deleteAliasDocument(String accountLinkId) async {
+    if (accountLinkId.isEmpty) {
+      return;
+    }
+
+    DocumentSnapshot aliasSnapshot = await _aliasDocument(accountLinkId).get();
+    if (!aliasSnapshot.exists) {
+      return;
+    }
+    await aliasSnapshot.reference.delete();
+  }
+
+  CollectionReference _aliasCollection() {
+    return FirestoreDatabase.instance.collection(_aliasCollectionPath);
+  }
+
+  DocumentReference _aliasDocument(String accountLinkId) {
+    return _aliasCollection().doc(accountLinkId);
   }
 
   AccountLink? _mergedLinkState({
@@ -496,19 +689,18 @@ class AccountLinkService {
       bungieConnected: links.any(
         (AccountLink? link) => link?.bungieConnected ?? false,
       ),
-      bungiePrimaryMembershipKey: _firstNonEmptyString(
-        links
-            .map((AccountLink? link) => link?.bungiePrimaryMembershipKey)
-            .toList(),
+      bungieAccountId: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.bungieAccountId).toList(),
       ),
-      bungiePrimaryMembershipId: _firstNonEmptyString(
-        links
-            .map((AccountLink? link) => link?.bungiePrimaryMembershipId)
-            .toList(),
+      bungieDisplayName: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.bungieDisplayName).toList(),
       ),
-      bungiePrimaryMembershipType: _firstNonNullInt(
+      bungieAvatarPath: _firstNonEmptyString(
+        links.map((AccountLink? link) => link?.bungieAvatarPath).toList(),
+      ),
+      bungieMarathonMembershipId: _firstNonEmptyString(
         links
-            .map((AccountLink? link) => link?.bungiePrimaryMembershipType)
+            .map((AccountLink? link) => link?.bungieMarathonMembershipId)
             .toList(),
       ),
       bungieLinkedAt: _firstNonNullInt(
@@ -548,6 +740,13 @@ class AccountLinkService {
       if (value != null) {
         return value;
       }
+    }
+    return null;
+  }
+
+  String? _asNonEmptyString(dynamic value) {
+    if (value is String && value.isNotEmpty) {
+      return value;
     }
     return null;
   }

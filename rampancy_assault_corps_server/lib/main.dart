@@ -12,6 +12,7 @@ import 'package:rampancy_assault_corps_server/api/settings_api.dart';
 import 'package:rampancy_assault_corps_server/api/command_api.dart';
 import 'package:rampancy_assault_corps_server/config/account_linking_config.dart';
 import 'package:rampancy_assault_corps_server/service/account_link_service.dart';
+import 'package:rampancy_assault_corps_server/service/account_link_migration_service.dart';
 import 'package:rampancy_assault_corps_server/service/user_service.dart';
 import 'package:rampancy_assault_corps_server/service/command_service.dart';
 import 'package:rampancy_assault_corps_server/service/link_sync_state_service.dart';
@@ -36,6 +37,7 @@ class RampancyAssaultCorpsServer implements Routing {
   static late MediaService svcMedia;
   static late LinkSyncStateService svcLinkSyncState;
   static late AccountLinkService svcAccountLink;
+  static AccountLinkMigrationService? svcAccountLinkMigration;
   static OAuthProviderService? svcOAuthProvider;
   static OAuthSecurityService? svcOAuthSecurity;
 
@@ -74,6 +76,10 @@ class RampancyAssaultCorpsServer implements Routing {
     server = await serve(_pipeline, InternetAddress.anyIPv4, listenPort());
     verbose("Server listening on port ${server.port}");
     print('[startup] bind_port_done port=${server.port}');
+    AccountLinkMigrationService? migrationService = svcAccountLinkMigration;
+    if (migrationService != null) {
+      unawaited(migrationService.migrateIfNeeded());
+    }
   }
 
   Future<void> _startServices() async {
@@ -85,6 +91,13 @@ class RampancyAssaultCorpsServer implements Routing {
     if (config.enabled) {
       svcOAuthProvider = OAuthProviderService(config);
       svcOAuthSecurity = OAuthSecurityService(config);
+      svcAccountLinkMigration = AccountLinkMigrationService(
+        links: svcAccountLink,
+        provider: svcOAuthProvider!,
+        security: svcOAuthSecurity!,
+      );
+    } else {
+      svcAccountLinkMigration = null;
     }
     verbose("Services Online");
   }

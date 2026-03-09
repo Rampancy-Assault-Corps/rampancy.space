@@ -117,9 +117,10 @@ class AccountLink with ModelCrud {
   final String? discordAvatarHash;
   final int? discordLinkedAt;
   final bool bungieConnected;
-  final String? bungiePrimaryMembershipKey;
-  final String? bungiePrimaryMembershipId;
-  final int? bungiePrimaryMembershipType;
+  final String? bungieAccountId;
+  final String? bungieDisplayName;
+  final String? bungieAvatarPath;
+  final String? bungieMarathonMembershipId;
   final int? bungieLinkedAt;
   final String? bungieRefreshCiphertext;
   final String? bungieRefreshNonce;
@@ -133,9 +134,10 @@ class AccountLink with ModelCrud {
     this.discordAvatarHash,
     this.discordLinkedAt,
     this.bungieConnected = false,
-    this.bungiePrimaryMembershipKey,
-    this.bungiePrimaryMembershipId,
-    this.bungiePrimaryMembershipType,
+    this.bungieAccountId,
+    this.bungieDisplayName,
+    this.bungieAvatarPath,
+    this.bungieMarathonMembershipId,
     this.bungieLinkedAt,
     this.bungieRefreshCiphertext,
     this.bungieRefreshNonce,

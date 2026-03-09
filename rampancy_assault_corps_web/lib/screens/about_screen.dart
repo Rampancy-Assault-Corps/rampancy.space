@@ -1,4 +1,5 @@
 import 'package:arcane_jaspr/arcane_jaspr.dart';
+import 'package:rampancy_assault_corps_web/components/rac_icons.dart';
 
 import '../components/app_header.dart';
 import '../utils/constants.dart';
@@ -146,7 +147,7 @@ class _ChecklistItem extends StatelessComponent {
     return ArcaneRow(
       style: const ArcaneStyleData(gap: Gap.sm, alignItems: AlignItems.center),
       children: [
-        ArcaneIcon.check(size: IconSize.sm),
+        RacIcons.check(size: IconSize.sm),
         ArcaneText(text),
       ],
     );

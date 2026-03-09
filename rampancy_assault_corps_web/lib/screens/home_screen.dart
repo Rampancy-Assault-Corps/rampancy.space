@@ -23,11 +23,11 @@ class _HomeLandingStage extends StatelessComponent {
 
   @override
   Component build(BuildContext context) {
-    return div([
+    return const div([
       div([
         div([
-          const RacActionButton(
-            label: '[ Make Contact ]',
+          RacActionButton(
+            label: '[ Establish Link ]',
             href: AppRoutes.link,
           ),
         ], classes: 'rac-landing__action'),
