@@ -273,6 +273,10 @@ class _LinkScreenState extends State<LinkScreen> {
     'discord_callback_invalid' =>
       'DISCORD DID NOT RETURN A VALID AUTHORIZATION CODE.',
     'discord_state_invalid' => 'DISCORD SIGN-IN SESSION EXPIRED. START AGAIN.',
+    'discord_token_exchange_failed' =>
+      'DISCORD SIGN-IN FAILED DURING AUTHORIZATION. RETRY TO CONTINUE.',
+    'discord_guild_join_failed' =>
+      'DISCORD SIGN-IN SUCCEEDED, BUT JOINING THE SERVER FAILED. RETRY TO CONTINUE.',
     'discord_link_failed' =>
       'DISCORD SIGN-IN FAILED WHILE SAVING YOUR CONNECTION.',
     'discord_requires_bungie' =>
@@ -613,6 +617,13 @@ class _DiscordPanel extends StatelessComponent {
           onPressed: onConnectDiscord,
           className: 'rac-action--inline-link',
         ),
+        secondaryAction: discordConnected
+            ? RacActionButton(
+                label: '[ Join Server ]',
+                onPressed: onConnectDiscord,
+                className: 'rac-action--inline-link',
+              )
+            : null,
       ),
     );
   }
@@ -678,6 +689,7 @@ class _IdentityBlock extends StatelessComponent {
   final List<String> detailLines;
   final String? avatarUrl;
   final Component action;
+  final Component? secondaryAction;
 
   const _IdentityBlock({
     required this.badge,
@@ -685,6 +697,7 @@ class _IdentityBlock extends StatelessComponent {
     required this.detailLines,
     required this.avatarUrl,
     required this.action,
+    this.secondaryAction,
   });
 
   @override
@@ -694,6 +707,11 @@ class _IdentityBlock extends StatelessComponent {
       detailChildren.add(
         div([Component.text(line)], classes: 'rac-identity__detail'),
       );
+    }
+
+    List<Component> actionChildren = <Component>[action];
+    if (secondaryAction != null) {
+      actionChildren.add(secondaryAction!);
     }
 
     return div([
@@ -709,7 +727,7 @@ class _IdentityBlock extends StatelessComponent {
       div([Component.text(badge)], classes: 'rac-identity__badge'),
       div([Component.text(title)], classes: 'rac-identity__title'),
       div(detailChildren, classes: 'rac-identity__details'),
-      div([action], classes: 'rac-identity__action'),
+      div(actionChildren, classes: 'rac-identity__actions'),
     ], classes: 'rac-identity');
   }
 }

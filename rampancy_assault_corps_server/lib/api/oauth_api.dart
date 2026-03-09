@@ -133,10 +133,18 @@ class OAuthAPI implements Routing {
     }
 
     try {
-      DiscordProfile profile = await currentProvider
-          .exchangeDiscordCodeForProfile(code: code);
+      DiscordOAuthResult discordOAuth = await currentProvider
+          .exchangeDiscordCode(code: code);
+      if (config.discordGuildJoinEnabled) {
+        await currentProvider.addDiscordUserToGuild(
+          discordUserId: discordOAuth.profile.id,
+          userAccessToken: discordOAuth.accessToken,
+        );
+      } else {
+        verbose('oauth_discord_guild_join_disabled');
+      }
       AccountLinkRecord link = await links.upsertDiscordLink(
-        profile: profile,
+        profile: discordOAuth.profile,
         accountLinkId: accountLinkId,
       );
 
@@ -165,6 +173,14 @@ class OAuthAPI implements Routing {
         location: _linkLocation(linked: 'discord', resumeToken: resumeToken),
         cookie: cookie,
       );
+    } on DiscordGuildJoinException catch (e) {
+      error('discord_guild_join_failed accountLinkId=$accountLinkId err=$e');
+      return _redirectWithError('discord_guild_join_failed');
+    } on DiscordTokenExchangeException catch (e) {
+      error(
+        'discord_token_exchange_failed accountLinkId=$accountLinkId err=$e',
+      );
+      return _redirectWithError('discord_token_exchange_failed');
     } catch (e) {
       error('discord_link_failed err=$e');
       return _redirectWithError('discord_link_failed');

@@ -6,6 +6,8 @@ class AccountLinkingConfig {
   final String discordClientId;
   final String discordClientSecret;
   final String discordRedirectUri;
+  final String discordGuildId;
+  final String discordBotToken;
   final String bungieClientId;
   final String bungieClientSecret;
   final String bungieRedirectUri;
@@ -21,6 +23,8 @@ class AccountLinkingConfig {
     required this.discordClientId,
     required this.discordClientSecret,
     required this.discordRedirectUri,
+    required this.discordGuildId,
+    required this.discordBotToken,
     required this.bungieClientId,
     required this.bungieClientSecret,
     required this.bungieRedirectUri,
@@ -42,6 +46,8 @@ class AccountLinkingConfig {
         discordClientId: '',
         discordClientSecret: '',
         discordRedirectUri: '',
+        discordGuildId: '',
+        discordBotToken: '',
         bungieClientId: '',
         bungieClientSecret: '',
         bungieRedirectUri: '',
@@ -67,6 +73,8 @@ class AccountLinkingConfig {
       'DISCORD_REDIRECT_URI',
       missing,
     );
+    final String discordGuildId = _optional(env, 'DISCORD_GUILD_ID');
+    final String discordBotToken = _optional(env, 'DISCORD_BOT_TOKEN');
     final String bungieClientId = _required(env, 'BUNGIE_CLIENT_ID', missing);
     final String bungieClientSecret = _required(
       env,
@@ -98,6 +106,13 @@ class AccountLinkingConfig {
       );
     }
 
+    if ((discordGuildId.isEmpty && discordBotToken.isNotEmpty) ||
+        (discordGuildId.isNotEmpty && discordBotToken.isEmpty)) {
+      throw StateError(
+        'DISCORD_GUILD_ID and DISCORD_BOT_TOKEN must either both be set or both be empty.',
+      );
+    }
+
     _requireKeyLength(sessionSigningKeyBase64, 'SESSION_SIGNING_KEY_BASE64');
     _requireKeyLength(
       oauthStateSigningKeyBase64,
@@ -115,6 +130,8 @@ class AccountLinkingConfig {
       discordClientId: discordClientId,
       discordClientSecret: discordClientSecret,
       discordRedirectUri: discordRedirectUri,
+      discordGuildId: discordGuildId,
+      discordBotToken: discordBotToken,
       bungieClientId: bungieClientId,
       bungieClientSecret: bungieClientSecret,
       bungieRedirectUri: bungieRedirectUri,
@@ -150,10 +167,18 @@ class AccountLinkingConfig {
     return value.trim();
   }
 
+  static String _optional(Map<String, String> env, String key) {
+    String? value = env[key];
+    return value?.trim() ?? '';
+  }
+
   static void _requireKeyLength(String keyBase64, String keyName) {
     final List<int> bytes = base64Decode(keyBase64);
     if (bytes.length != 32) {
       throw StateError('$keyName must decode to exactly 32 bytes.');
     }
   }
+
+  bool get discordGuildJoinEnabled =>
+      discordGuildId.isNotEmpty && discordBotToken.isNotEmpty;
 }

@@ -18,6 +18,31 @@ class DiscordProfile {
   });
 }
 
+class DiscordOAuthResult {
+  final String accessToken;
+  final DiscordProfile profile;
+
+  const DiscordOAuthResult({required this.accessToken, required this.profile});
+}
+
+class DiscordTokenExchangeException implements Exception {
+  final String message;
+
+  const DiscordTokenExchangeException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+class DiscordGuildJoinException implements Exception {
+  final String message;
+
+  const DiscordGuildJoinException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class BungieMembershipData {
   final String membershipId;
   final int membershipType;
@@ -115,7 +140,7 @@ class OAuthProviderService {
     Uri uri = Uri.https('discord.com', '/oauth2/authorize', <String, String>{
       'response_type': 'code',
       'client_id': _config.discordClientId,
-      'scope': 'identify',
+      'scope': 'identify guilds.join',
       'redirect_uri': _config.discordRedirectUri,
       'state': state,
       'prompt': 'consent',
@@ -140,9 +165,7 @@ class OAuthProviderService {
     return uri;
   }
 
-  Future<DiscordProfile> exchangeDiscordCodeForProfile({
-    required String code,
-  }) async {
+  Future<DiscordOAuthResult> exchangeDiscordCode({required String code}) async {
     Uri tokenUri = Uri.https('discord.com', '/api/oauth2/token');
     network('oauth_discord_exchange_begin codeLength=${code.length}');
 
@@ -166,7 +189,7 @@ class OAuthProviderService {
 
     if (tokenResponse.statusCode < 200 || tokenResponse.statusCode >= 300) {
       String providerError = _extractProviderError(tokenResponse.body);
-      throw StateError(
+      throw DiscordTokenExchangeException(
         'Discord token exchange failed: ${tokenResponse.statusCode} $providerError',
       );
     }
@@ -178,7 +201,9 @@ class OAuthProviderService {
     String accessToken = (tokenMap['access_token'] as String?) ?? '';
 
     if (accessToken.isEmpty) {
-      throw StateError('Discord token exchange returned no access token.');
+      throw const DiscordTokenExchangeException(
+        'Discord token exchange returned no access token.',
+      );
     }
 
     Uri profileUri = Uri.https('discord.com', '/api/users/@me');
@@ -192,7 +217,7 @@ class OAuthProviderService {
 
     if (profileResponse.statusCode < 200 || profileResponse.statusCode >= 300) {
       String providerError = _extractProviderError(profileResponse.body);
-      throw StateError(
+      throw DiscordTokenExchangeException(
         'Discord profile request failed: ${profileResponse.statusCode} $providerError',
       );
     }
@@ -206,15 +231,62 @@ class OAuthProviderService {
     String username = (profileMap['username'] as String?) ?? '';
 
     if (id.isEmpty || username.isEmpty) {
-      throw StateError('Discord profile missing required id/username fields.');
+      throw const DiscordTokenExchangeException(
+        'Discord profile missing required id/username fields.',
+      );
     }
     info('oauth_discord_profile_resolved discordId=$id username=$username');
 
-    return DiscordProfile(
+    DiscordProfile profile = DiscordProfile(
       id: id,
       username: username,
       globalName: profileMap['global_name'] as String?,
       avatarHash: profileMap['avatar'] as String?,
+    );
+
+    return DiscordOAuthResult(accessToken: accessToken, profile: profile);
+  }
+
+  Future<void> addDiscordUserToGuild({
+    required String discordUserId,
+    required String userAccessToken,
+  }) async {
+    if (!_config.discordGuildJoinEnabled) {
+      verbose('oauth_discord_guild_join_skipped_not_configured');
+      return;
+    }
+
+    Uri guildJoinUri = Uri.https(
+      'discord.com',
+      '/api/v10/guilds/${_config.discordGuildId}/members/$discordUserId',
+    );
+    network(
+      'oauth_discord_guild_join_begin guildId=${_config.discordGuildId} discordId=$discordUserId',
+    );
+
+    http.Response guildJoinResponse = await _http.put(
+      guildJoinUri,
+      headers: <String, String>{
+        'Authorization': 'Bot ${_config.discordBotToken}',
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: jsonEncode(<String, String>{'access_token': userAccessToken}),
+    );
+    network(
+      'oauth_discord_guild_join_response status=${guildJoinResponse.statusCode} guildId=${_config.discordGuildId} discordId=$discordUserId',
+    );
+
+    if (guildJoinResponse.statusCode != 201 &&
+        guildJoinResponse.statusCode != 204) {
+      String providerError = _extractProviderError(guildJoinResponse.body);
+      throw DiscordGuildJoinException(
+        'Discord guild join failed: ${guildJoinResponse.statusCode} $providerError',
+      );
+    }
+
+    info(
+      'oauth_discord_guild_join_success guildId=${_config.discordGuildId} discordId=$discordUserId status=${guildJoinResponse.statusCode}',
     );
   }
 

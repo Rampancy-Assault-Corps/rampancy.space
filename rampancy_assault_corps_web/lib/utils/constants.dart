@@ -4,7 +4,7 @@ class AppConstants {
 
   /// Application name displayed in header
   static const String appName = 'Rampancy Assault Corps';
-  static const String appVersion = '1.0.2';
+  static const String appVersion = '1.0.3';
 
   /// Application description
   static const String appDescription =

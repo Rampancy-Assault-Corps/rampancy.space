@@ -15,6 +15,7 @@ Local development runs with a gateway on `:8080`:
    - `GOOGLE_APPLICATION_CREDENTIALS`
    - `ENABLE_ACCOUNT_LINKING=true`
    - Discord/Bungie OAuth values
+   - `DISCORD_GUILD_ID` and `DISCORD_BOT_TOKEN` if Discord link should also add the user to your server
    - base64 keys (`SESSION_SIGNING_KEY_BASE64`, `OAUTH_STATE_SIGNING_KEY_BASE64`, `TOKEN_ENCRYPTION_KEY_BASE64`) that decode to 32 bytes
 3. Start local stack:
    - `./scripts/local_dev.sh`
@@ -28,6 +29,7 @@ If `config/local.env` is not found, `scripts/local_dev.sh` runs with your curren
 1. Create deploy env:
    - `cp config/deploy.env.example config/deploy.env`
 2. Fill `config/deploy.env` with your production OAuth values if you want Bungie/Discord linking enabled.
+   - Add `DISCORD_GUILD_ID` and `DISCORD_BOT_TOKEN` if Discord link should also add the user to your server.
 
 ```bash
 # Firebase rules

@@ -489,8 +489,11 @@ select {
   overflow-wrap: anywhere;
 }
 
-.rac-identity__action {
+.rac-identity__actions {
   margin-top: 4px;
+  display: grid;
+  justify-items: center;
+  gap: clamp(4px, min(0.7vmin, 0.7vh), 8px);
 }
 
 .rac-action {

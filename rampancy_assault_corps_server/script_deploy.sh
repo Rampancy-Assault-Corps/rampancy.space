@@ -82,6 +82,12 @@ if is_truthy "$ENABLE_ACCOUNT_LINKING"; then
     append_env "DISCORD_CLIENT_ID" "$DISCORD_CLIENT_ID"
     append_env "DISCORD_CLIENT_SECRET" "$DISCORD_CLIENT_SECRET"
     append_env "DISCORD_REDIRECT_URI" "$DISCORD_REDIRECT_URI"
+    if [ -n "${DISCORD_GUILD_ID:-}" ] || [ -n "${DISCORD_BOT_TOKEN:-}" ]; then
+        require_env "DISCORD_GUILD_ID"
+        require_env "DISCORD_BOT_TOKEN"
+        append_env "DISCORD_GUILD_ID" "$DISCORD_GUILD_ID"
+        append_env "DISCORD_BOT_TOKEN" "$DISCORD_BOT_TOKEN"
+    fi
     append_env "BUNGIE_CLIENT_ID" "$BUNGIE_CLIENT_ID"
     append_env "BUNGIE_CLIENT_SECRET" "$BUNGIE_CLIENT_SECRET"
     append_env "BUNGIE_REDIRECT_URI" "$BUNGIE_REDIRECT_URI"
